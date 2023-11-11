@@ -1,5 +1,11 @@
 import os
 import string
+import numpy as np
+
+
+def condense_duplicates(lst):
+    changed_positions = np.append(0, np.nonzero(np.array(lst[:-1]) != np.array(lst[1:]))[0] + 1)
+    return np.array(lst)[changed_positions]
 
 
 def parse_info_name(path):
@@ -15,5 +21,3 @@ def parse_info_name(path):
     for key in info.keys():
         info[key] = "".join(info[key])
     return info
-
-

@@ -5,6 +5,7 @@ from .tools import parse_info_name
 from ..utils.tensors import collate
 from ..utils.misc import to_torch
 import src.utils.rotation_conversions as geometry
+from src.datasets.tools import condense_duplicates
 
 POSE_REPS = ["xyz", "rotvec", "rotmat", "rotquat", "rot6d"]
 UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS = [48, 50, 28, 38, 52, 11, 29, 19, 51, 22, 14, 21, 26, 10, 24]
@@ -219,7 +220,7 @@ class Dataset(torch.utils.data.Dataset):
 
         if hasattr(self, 'db') and self.clip_label_text in self.db.keys():
             text_labels = self.get_clip_text(data_index, frame_ix)
-            text_labels = " and ".join(list(np.unique(text_labels)))
+            text_labels = " and ".join(condense_duplicates(text_labels))
             output['clip_text'] = text_labels
 
         if hasattr(self, 'db') and 'action_cat' in self.db.keys() and self.use_action_cat_as_text_labels:
