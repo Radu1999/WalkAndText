@@ -14,8 +14,8 @@ from src.utils.action_label_to_idx import action_label_to_idx
 
 if __name__ == '__main__':
     parameters, folder, checkpointname, epoch = parser(checkpoint=True)
-    gpu_device = get_gpu_device()
-    parameters["device"] = f"cuda:{gpu_device}"
+    #gpu_device = get_gpu_device()
+    parameters["device"] = f"cuda"
     data_split = 'vald'  # Hardcoded
     parameters['use_action_cat_as_text_labels'] = True
     parameters['only_60_classes'] = True

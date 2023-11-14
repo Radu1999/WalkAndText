@@ -94,6 +94,8 @@ class MOTIONCLIP(nn.Module):
                 elif d == 'text':
                     texts = clip.tokenize(batch['clip_text']).to(self.device)
                     features = self.clip_model.encode_text(texts).float()
+                else:
+                    raise ValueError(f'Invalid clip domain [{d}]')
 
                 # normalized features
                 features_norm = features / features.norm(dim=-1, keepdim=True)
