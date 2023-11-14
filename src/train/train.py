@@ -57,7 +57,6 @@ if __name__ == '__main__':
     model, datasets = get_model_and_data(parameters)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=parameters["lr"])
-
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
     print("Training model..")
 

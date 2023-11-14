@@ -1,30 +1,13 @@
-from transformers import TextGenerationPipeline, AutoModelForMaskedLM, AutoTokenizer
-from src.datasets.amass import AMASS
+from transformers import pipeline
 import json
-import clip
+import torch
 import joblib
 
+pipe = pipeline("text-generation", model="HuggingFaceH4/zephyr-7b-beta", torch_dtype=torch.bfloat16, device="cuda")
 
-# model = AutoModelForMaskedLM.from_pretrained('bert-base-uncased')
-# tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-# pipe = TextGenerationPipeline(model=model, tokenizer=tokenizer, torch_dtype=torch.bfloat16, device="cpu")
-#
-# prompt = "Tell me 3 swear words: "
-#
-# outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
-
-# clip_model, clip_preprocess = clip.load("ViT-B/32", device='cuda',
-#                                             jit=False)  # Must set jit=False for training
-# test_dataset = AMASS(datapath='../../data/amass_db/babel_30fps_db.pt', clip_preprocess=clip_preprocess, split='vald', num_frames=60)
-# test_dataset.set_clip_text(0, 'bro in plm')
-# print(test_dataset.__getitem__(0)['clip_text'])
-# joblib.dump(test_dataset, '../../experiments/exp1/dataset.pt')
-
-
-# print(outputs[0]["generated_text"])
-
-def generate_text(prompt):
-    return 'text'
+def generate_text(prompt, description):
+    pipe(prompt, max_new_tokens=512, do_sample=True, temperature=0)
+    return outputs[0]["generated_text"]
 
 
 def create_dataset(path: str):
@@ -45,4 +28,4 @@ def create_dataset(path: str):
 
 
 if __name__ == '__main__':
-    create_dataset('exp1')
+    generate_text('Who are you?', 'dance and run')
