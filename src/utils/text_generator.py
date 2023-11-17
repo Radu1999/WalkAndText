@@ -6,7 +6,7 @@ import joblib
 pipe = pipeline("text-generation", model="HuggingFaceH4/zephyr-7b-beta", torch_dtype=torch.bfloat16, device="cuda")
 
 def generate_text(prompt, description):
-    pipe(prompt, max_new_tokens=512, do_sample=True, temperature=0)
+    outputs = pipe(prompt, max_new_tokens=512, do_sample=True, temperature=0.5)
     return outputs[0]["generated_text"]
 
 
@@ -28,4 +28,6 @@ def create_dataset(path: str):
 
 
 if __name__ == '__main__':
-    generate_text('Who are you?', 'dance and run')
+    print(generate_text('Who are you?', 'dance and run'))
+    print(generate_text('Are you dumb?', 'dance and run'))
+    print(generate_text('What is the highest mountain point?', 'dance and run'))
