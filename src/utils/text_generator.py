@@ -2,12 +2,15 @@ from transformers import pipeline
 import json
 import torch
 import joblib
+from src.datasets.amass import AMASS
 
 pipe = pipeline("text-generation", model="HuggingFaceH4/zephyr-7b-beta", torch_dtype=torch.bfloat16, device="cuda")
 
-def generate_text(prompt, description):
-    outputs = pipe(prompt, max_new_tokens=512, do_sample=True, temperature=0.5)
-    return outputs[0]["generated_text"]
+
+def generate_text(prompt, inputs):
+    prompts = [prompt + input for input in inputs]
+    outputs = pipe(prompts, batch_size=8, max_new_tokens=512, do_sample=True, temperature=0.5)
+    return [output[0]["generated_text"] for output in outputs]
 
 
 def create_dataset(path: str):
@@ -18,16 +21,18 @@ def create_dataset(path: str):
         prompt = f.read()
 
     for split in splits:
+        inputs = []
         data = AMASS(datapath='../../data/amass_db/babel_30fps_db.pt', clip_preprocess=clip_preprocess,
                      split=split,
                      num_frames=60)
         for i in range(len(data)):
-            data.set_clip_text(i, generate_text(prompt))
+            if i == 3:
+                break
+            inputs.append(data._get_item_data_index(i)['clip_text'])
 
+        print(generate_text(prompt, inputs))
         joblib.dump(data, f'../../experiments/{path}/dataset_{split}.pt')
 
 
 if __name__ == '__main__':
-    print(generate_text('Who are you?', 'dance and run'))
-    print(generate_text('Are you dumb?', 'dance and run'))
-    print(generate_text('What is the highest mountain point?', 'dance and run'))
+    create_dataset('exp1')
