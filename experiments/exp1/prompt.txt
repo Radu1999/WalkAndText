@@ -1,3 +1,2 @@
-<s>[INST] You will be given a short text description that describe actions performed in avideo.
-Imagine the video, maintaining the order of actions. Describe the actions in the video using an enriched vocabulary.
-The text is:
+[INST] Imagine a short video depicting a sequence of human body movements based on the provided text description. Narrate the actions observed in the video using rich, descriptive language, staying faithful to the given order of actions and transitions between them. Avoid introducing any actions not present in the given text.
+Provided text description is: {}. [/INST]
