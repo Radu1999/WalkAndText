@@ -38,7 +38,29 @@ class TimeEncoding(nn.Module):
         x = x + time[..., None]
         return self.dropout(x)
     
-
+class ProjectionHead(nn.Module):
+    def __init__(
+        self,
+        embedding_dim,
+        projection_dim=256,
+        dropout=0.1
+    ):
+        super().__init__()
+        self.projection = nn.Linear(embedding_dim, projection_dim)
+        self.gelu = nn.GELU()
+        self.fc = nn.Linear(projection_dim, projection_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(projection_dim)
+    
+    def forward(self, x):
+        projected = self.projection(x)
+        x = self.gelu(projected)
+        x = self.fc(x)
+        x = self.dropout(x)
+        x = x + projected
+        x = self.layer_norm(x)
+        return x
+    
 class Encoder_TRANSFORMER(nn.Module):
     def __init__(self, modeltype, njoints, nfeats, num_frames, num_classes, translation, pose_rep, glob, glob_rot,
                  latent_dim=256, ff_size=1024, num_layers=4, num_heads=4, dropout=0.1,

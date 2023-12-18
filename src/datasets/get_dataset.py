@@ -13,6 +13,7 @@ def get_datasets(parameters, clip_preprocess, split="train"):
 
         # add specific parameters from the dataset loading
         train.update_parameters(parameters)
+        test.split = 'vald'
         test.update_parameters(parameters)
     else:
         dataset = DATA(split=split, clip_preprocess=clip_preprocess, **parameters)

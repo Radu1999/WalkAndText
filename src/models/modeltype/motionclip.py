@@ -1,15 +1,29 @@
 import numpy as np
 import torch
 import torch.nn as nn
-
+from transformers import RobertaTokenizer, RobertaModel
 import clip
+from ..architectures.transformer import ProjectionHead
 from ..tools.losses import get_loss_function
 from ..rotation2xyz import Rotation2xyz
+import torch.nn.functional as F
 
 loss_ce = nn.CrossEntropyLoss()
 loss_mse = nn.MSELoss()
 
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin=1.5):
+        super(ContrastiveLoss, self).__init__()
+        self.margin = margin
+    def forward(self, output1, output2, target):
+        dist = F.pairwise_distance(output1, output2)
+        loss = (1 - target) * torch.pow(dist, 2) \
+            + (target) * torch.pow(torch.clamp(self.margin - dist, min=0.0), 2)
+        loss = torch.mean(loss)
+        return loss
+
 cosine_sim = nn.CosineSimilarity(dim=1, eps=1e-6)
+contrastive = ContrastiveLoss()
 from tqdm import tqdm
 
 
@@ -20,7 +34,7 @@ class MOTIONCLIP(nn.Module):
 
         self.encoder = encoder
         self.decoder = decoder
-
+        
         self.outputxyz = outputxyz
 
         self.lambdas = lambdas
@@ -34,9 +48,22 @@ class MOTIONCLIP(nn.Module):
         self.translation = translation
         self.jointstype = jointstype
         self.vertstrans = vertstrans
+        
+        self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=256)
+        self.text_projection = ProjectionHead(embedding_dim=512, projection_dim=256)
+        
+        model_name = 'roberta-base'
+        self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
+        self.text_encoder = RobertaModel.from_pretrained(model_name)
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
+        self.econder_to_latent = nn.Linear(768, latent_dim)
+        
 
-        self.clip_model = kwargs['clip_model']
-        self.clip_training = kwargs.get('clip_training', False)
+        self.clip_model = kwargs.get('clip_model', False)
+        self.clip_training = kwargs.get('clip_training', True)
+        
+        
         if self.clip_training and self.clip_model:
             self.clip_model.training = True
         else:
@@ -58,48 +85,55 @@ class MOTIONCLIP(nn.Module):
         kargs.update(kwargs)
         return self.rotation2xyz(x, mask, get_rotations_back=get_rotations_back, **kargs)
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch, add_clip=True):
 
         # compute all losses other than clip
         mixed_loss = 0.
         losses = {}
         for ltype, lam in self.lambdas.items():
             loss_function = get_loss_function(ltype)
-            loss = loss_function(self, batch)
+            loss = loss_function(batch)
             mixed_loss += loss * lam
             losses[ltype] = loss.item()
-
+        
+        if add_clip:
         # compute clip losses
-        mixed_clip_loss, clip_losses = self.compute_clip_losses(batch)
+            mixed_clip_loss, clip_losses = self.compute_clip_losses(batch)
+            # mix and add clip losses
+            mixed_loss_with_clip = mixed_loss # + mixed_clip_loss  # this is the ultimate loss to optimize, combining ALL losses
+            losses.update(clip_losses)
 
-        # mix and add clip losses
-        mixed_loss_with_clip = mixed_loss + mixed_clip_loss  # this is the ultimate loss to optimize, combining ALL losses
-        losses.update(clip_losses)
+      
         losses["mixed_without_clip"] = mixed_loss.item()
-        losses["mixed_clip_only"] = mixed_clip_loss if isinstance(mixed_clip_loss, float) else mixed_clip_loss.item()
-        losses["mixed_with_clip"] = mixed_loss_with_clip if isinstance(mixed_loss_with_clip,
-                                                                       float) else mixed_loss_with_clip.item()
+        # losses["mixed_clip_only"] = mixed_clip_loss if isinstance(mixed_clip_loss, float) else mixed_clip_loss.item()
+        # losses["mixed_with_clip"] = mixed_loss_with_clip if isinstance(mixed_loss_with_clip,
+        #                                                               float) else mixed_loss_with_clip.item()
 
-        return mixed_loss_with_clip, losses
-
+        return mixed_loss, losses
+    
+        
     def compute_clip_losses(self, batch):
         mixed_clip_loss = 0.
         clip_losses = {}
-
+        target = torch.eye(batch['z'].shape[0]).to(self.device)
         if self.clip_training:
-            for d in self.clip_training.split('_'):
+            for d in self.clip_lambdas.keys():
                 if d == 'image':
-                    features = self.clip_model.encode_image(
+                    continue
+                    features = self.encode_image(
                         batch['clip_images']).float()  # preprocess is done in dataloader
                 elif d == 'text':
-                    texts = clip.tokenize(batch['clip_text']).to(self.device)
-                    features = self.clip_model.encode_text(texts).float()
-                else:
-                    raise ValueError(f'Invalid clip domain [{d}]')
+                    features = self.encode_text(batch['clip_text'], method="clip")
 
                 # normalized features
                 features_norm = features / features.norm(dim=-1, keepdim=True)
                 seq_motion_features_norm = batch["z"] / batch["z"].norm(dim=-1, keepdim=True)
+                
+                cont =  contrastive(features_norm, seq_motion_features_norm, target)
+                mixed_clip_loss += cont
+                clip_losses[f'{d}_cosine'] = cont.item()
+                continue
+                
                 logit_scale = self.clip_model.logit_scale.exp()
                 logits_per_motion = logit_scale * seq_motion_features_norm @ features_norm.t()
                 logits_per_d = logits_per_motion.t()
@@ -119,13 +153,12 @@ class MOTIONCLIP(nn.Module):
             for d in self.clip_lambdas.keys():
                 if len(self.clip_lambdas[d].keys()) == 0:
                     continue
-                with torch.no_grad():
+                with torch.no_grad():  
                     if d == 'image':
-                        features = self.clip_model.encode_image(
+                        features = self.encode_image(
                             batch['clip_images']).float()  # preprocess is done in dataloader
                     elif d == 'text':
-                        texts = clip.tokenize(batch['clip_text']).to(self.device)
-                        features = self.clip_model.encode_text(texts).float()
+                        features = self.encode_text(batch['clip_text'], method="clip")
                     else:
                         raise ValueError(f'Invalid clip domain [{d}]')
 
@@ -149,17 +182,23 @@ class MOTIONCLIP(nn.Module):
                     clip_losses[f'{d}_ce_from_motion'] = ce_from_motion_loss.item()
                     clip_losses[f'{d}_mixed_ce'] = clip_mixed_loss.item()
                     mixed_clip_loss += clip_mixed_loss * self.clip_lambdas[d]['ce']
-
+                
+                cont =  contrastive(features_norm, seq_motion_features_norm, target)
+                mixed_clip_loss += cont
+                clip_losses[f'{d}_cosine'] = cont.item()
+                continue
                 if 'mse' in self.clip_lambdas[d].keys():
                     mse_clip_loss = loss_mse(features, batch["z"])
                     clip_losses[f'{d}_mse'] = mse_clip_loss.item()
                     mixed_clip_loss += mse_clip_loss * self.clip_lambdas[d]['mse']
-
+                
                 if 'cosine' in self.clip_lambdas[d].keys():
                     cos = cosine_sim(features_norm, seq_motion_features_norm)
                     cosine_loss = (1 - cos).mean()
                     clip_losses[f'{d}_cosine'] = cosine_loss.item()
                     mixed_clip_loss += cosine_loss * self.clip_lambdas[d]['cosine']
+                
+                
 
         return mixed_clip_loss, clip_losses
 
@@ -171,7 +210,22 @@ class MOTIONCLIP(nn.Module):
         index = torch.arange(max_len, device=lengths.device).expand(len(lengths), max_len)
         mask = index < lengths.unsqueeze(1)
         return mask
-
+    
+    def encode_text(self, text, method="roberta"):
+        if method == "roberta":
+            tokens = self.tokenizer(text, return_tensors="pt",
+                                    padding=True, truncation=True).to(self.device)
+            return self.text_projection(self.econder_to_latent(
+                    torch.mean(self.text_encoder(**tokens).last_hidden_state, dim=1).float()
+                )).float()
+        else:
+            texts = clip.tokenize(text, truncate=True).to(self.device)
+            # return self.text_projection(self.clip_model.encode_text(texts).float()).float()
+            return self.clip_model.encode_text(texts).float()
+            
+    def encode_image(self, image, method="clip"):
+        return self.clip_model.encode_image(image).float()
+    
     def generate_one(self, cls, duration, fact=1, xyz=False):
         y = torch.tensor([cls], dtype=int, device=self.device)[None]
         lengths = torch.tensor([duration], dtype=int, device=self.device)
@@ -269,8 +323,8 @@ class MOTIONCLIP(nn.Module):
         elif self.pose_rep == "xyz":
             batch["output_xyz"] = batch["output"]
         return batch
-
-    def forward(self, batch):
+    
+    def encode_motion(self, bacth):
         if self.outputxyz:
             batch["x_xyz"] = self.rot2xyz(batch["x"], batch["mask"])
         elif self.pose_rep == "xyz":
@@ -278,13 +332,26 @@ class MOTIONCLIP(nn.Module):
         # encode
         batch.update(self.encoder(batch))
 
-        batch["z"] = batch["mu"]
-        # decode
-        batch.update(self.decoder(batch))
-
-        # if we want to output xyz
+        batch["z"] = self.motion_projection(batch["mu"])
+        return batch["z"]
+    
+    def forward(self, batch):
         if self.outputxyz:
-            batch["output_xyz"] = self.rot2xyz(batch["output"], batch["mask"])
+            batch["x_xyz"] = self.rot2xyz(batch["x"], batch["mask"])
         elif self.pose_rep == "xyz":
-            batch["output_xyz"] = batch["output"]
+            batch["x_xyz"] = batch["x"]
+        # encode
+        batch.update(self.encoder(batch))
+        
+        batch["z"] = batch["mu"]
+        # batch["z"] = self.motion_projection(batch["mu"])
+        # mask = (torch.rand(batch["z"].shape) > 0.75).to(self.device)
+        # decode
+#         batch.update(self.decoder(batch))
+
+#         # if we want to output xyz
+#         if self.outputxyz:
+#             batch["output_xyz"] = self.rot2xyz(batch["output"], batch["mask"])
+#         elif self.pose_rep == "xyz":
+#             batch["output_xyz"] = batch["output"]
         return batch

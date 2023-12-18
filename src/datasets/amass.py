@@ -1,91 +1,13 @@
-# # -*- coding: utf-8 -*-
-#
-# # Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) is
-# # holder of all proprietary rights on this computer program.
-# # You can only use this computer program if you have closed
-# # a license agreement with MPG or you get the right to use the computer
-# # program from someone who is authorized to grant you that right.
-# # Any use of the computer program without a valid license is prohibited and
-# # liable to prosecution.
-# #
-# # Copyright©2019 Max-Planck-Gesellschaft zur Förderung
-# # der Wissenschaften e.V. (MPG). acting on behalf of its Max Planck Institute
-# # for Intelligent Systems. All rights reserved.
-# #
-# # Contact: ps-license@tuebingen.mpg.de
-#
-# import torch
-# import joblib
-# import numpy as np
-# import os.path as osp
-# from torch.utils.data import Dataset
-#
-# # from lib.core.config import VIBE_DB_DIR
-# VIBE_DB_DIR = '../VIBE/data/vibe_db'
-# # from lib.data_utils.img_utils import split_into_chunks
-#
-# def split_into_chunks(vid_names, seqlen, stride):
-#     video_start_end_indices = []
-#
-#     video_names, group = np.unique(vid_names, return_index=True)
-#     perm = np.argsort(group)
-#     video_names, group = video_names[perm], group[perm]
-#
-#     indices = np.split(np.arange(0, vid_names.shape[0]), group[1:])
-#
-#     for idx in range(len(video_names)):
-#         indexes = indices[idx]
-#         if indexes.shape[0] < seqlen:
-#             continue
-#         chunks = view_as_windows(indexes, (seqlen,), step=stride)
-#         start_finish = chunks[:, (0, -1)].tolist()
-#         video_start_end_indices += start_finish
-#
-#     return video_start_end_indices
-#
-# class AMASS(Dataset):
-#     def __init__(self, seqlen):
-#         self.seqlen = seqlen
-#
-#         self.stride = seqlen
-#
-#         self.db = self.load_db()
-#         self.vid_indices = split_into_chunks(self.db['vid_name'], self.seqlen, self.stride)
-#         del self.db['vid_name']
-#         print(f'AMASS dataset number of videos: {len(self.vid_indices)}')
-#
-#     def __len__(self):
-#         return len(self.vid_indices)
-#
-#     def __getitem__(self, index):
-#         return self.get_single_item(index)
-#
-#     def load_db(self):
-#         db_file = osp.join(VIBE_DB_DIR, 'amass_db.pt')
-#         db = joblib.load(db_file)
-#         return db
-#
-#     def get_single_item(self, index):
-#         start_index, end_index = self.vid_indices[index]
-#         thetas = self.db['theta'][start_index:end_index+1]
-#
-#         cam = np.array([1., 0., 0.])[None, ...]
-#         cam = np.repeat(cam, thetas.shape[0], axis=0)
-#         theta = np.concatenate([cam, thetas], axis=-1)
-#
-#         target = {
-#             'theta': torch.from_numpy(theta).float(),  # cam, pose and shape
-#         }
-#         return target
-
 import os
 import numpy as np
 import joblib
-from .dataset import Dataset
+from src.datasets.dataset import Dataset
 from src.config import ROT_CONVENTION_TO_ROT_NUMBER
 from src import config
 from PIL import Image
 import sys
+import clip
+import torch
 
 sys.path.append('')
 
@@ -136,7 +58,7 @@ def get_trans_from_vibe(vibe, use_z=True):
 class AMASS(Dataset):
     dataname = "amass"
 
-    def __init__(self, datapath="data/amass/amass_30fps_legacy_db.pt", split="train", use_z=1, **kwargs):
+    def __init__(self, datapath="data/amass/amass_db/babel_30fps_db.pt", split="vald", use_z=1, **kwargs):
         assert '_db.pt' in datapath
         self.datapath = datapath.replace('_db.pt', '_{}.pt'.format(split))
         assert os.path.exists(self.datapath)
@@ -203,7 +125,10 @@ class AMASS(Dataset):
                 images = [np.squeeze(e) for e in np.split(self.db['clip_images'][seq_idx][:n_sub_seq], n_sub_seq)]
                 processed_images = [self.clip_preprocess(Image.fromarray(img)) for img in images]
                 self._clip_images.extend(processed_images)
-            if self.clip_label_text in self.db:
+            
+            if 'clip_text' in self.db:
+                self._clip_texts.extend(np.split(np.array([self.db['clip_text'][seq_idx]] * n_sub_seq), n_sub_seq))
+            elif self.clip_label_text in self.db:
                 self._clip_texts.extend(np.split(self.db[self.clip_label_text][seq_idx][:n_frames_in_use], n_sub_seq))
             if 'clip_pathes' in self.db:
                 self._clip_pathes.extend(np.split(self.db['clip_pathes'][seq_idx][:n_sub_seq], n_sub_seq))
@@ -249,8 +174,9 @@ class AMASS(Dataset):
         # data_size should be [16275369]
         db_file = self.datapath
         db = joblib.load(db_file)
-
-        if 'clip_images' in db and db['clip_images'][0] is None:  # No images added
+        # print(db_file)
+        # print(db['clip_images'])
+        if 'clip_images' in db and len(db['clip_images']) and db['clip_images'][0] is None:  # No images added
             del db['clip_images']
 
         return db
@@ -277,4 +203,10 @@ class AMASS(Dataset):
 
 
 if __name__ == "__main__":
-    dataset = AMASS()
+    device = 'cpu'
+    clip_model, clip_preprocess = clip.load("ViT-B/32", device=device,
+                                        jit=False)  # Must set jit=False for training
+    dataset = AMASS(clip_preprocess=clip_preprocess)
+    print(torch.tensor(dataset._load_rotvec(0, 0)).shape)
+    print(dataset.__getitem__(0)['inp'].shape)
+    print(dataset.__getitem__(0)['inp'][0])

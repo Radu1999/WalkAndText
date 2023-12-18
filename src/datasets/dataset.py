@@ -68,6 +68,8 @@ class Dataset(torch.utils.data.Dataset):
         self._clip_texts[ind] = np.array([text])
 
     def get_clip_text(self, ind, frame_ix):
+        if len(self._clip_texts[ind]) == 1:
+            return self._clip_texts[ind][0]
         if self._clip_texts[ind].size < len(frame_ix):
             return self._clip_texts[ind]
         clip_text = self._clip_texts[ind][frame_ix]
@@ -102,7 +104,7 @@ class Dataset(torch.utils.data.Dataset):
             data_index = self._train[index]
         else:
             data_index = self._test[index]
-
+        
         return self._get_item_data_index(data_index)
 
     def _load(self, ind, frame_ix):
@@ -217,18 +219,39 @@ class Dataset(torch.utils.data.Dataset):
                 raise ValueError("Sampling not recognized.")
 
         inp, target = self.get_pose_data(data_index, frame_ix)
-
         output = {'inp': inp, 'target': target}
         if hasattr(self, 'db') and 'clip_images' in self.db.keys():
             output['clip_image'] = self.get_clip_image(data_index)
 
         if hasattr(self, 'db') and 'clip_pathes' in self.db.keys():
             output['clip_path'] = self.get_clip_path(data_index)
+        
+        if hasattr(self, 'db') and 'clip_text' in self.db.keys() and not self.use_action_cat_as_text_labels:
+            output['clip_text'] = self.get_clip_text(data_index, frame_ix)
+            if self.split == 'train':
+                return output
+            categories = self.get_clip_action_cat(data_index, frame_ix)
+            unique_cats = np.unique(categories)
+            all_valid_cats = []
+            for multi_cats in unique_cats:
+                for cat in multi_cats.split(","):
+                    if cat not in action_label_to_idx:
+                        continue
+                    cat_idx = action_label_to_idx[cat]
+                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                        continue
+                    if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                        continue
+                    all_valid_cats.extend([cat])
+            if len(all_valid_cats) == 0:
+                return None
+            choosen_cat = np.random.choice(all_valid_cats, size=1)[0]
+            output['all_categories'] = all_valid_cats        
 
-        if hasattr(self, 'db') and self.clip_label_text in self.db.keys():
-            text_labels = self.get_clip_text(data_index, frame_ix)
-            text_labels = " and ".join(condense_duplicates(text_labels))
-            output['clip_text'] = text_labels
+        # if hasattr(self, 'db') and self.clip_label_text in self.db.keys():
+        #     text_labels = self.get_clip_text(data_index, frame_ix)
+        #     text_labels = " and ".join(condense_duplicates(text_labels))
+        #     output['clip_text'] = text_labels
 
         if hasattr(self, 'db') and 'action_cat' in self.db.keys() and self.use_action_cat_as_text_labels:
             categories = self.get_clip_action_cat(data_index, frame_ix)
@@ -253,7 +276,6 @@ class Dataset(torch.utils.data.Dataset):
             output['clip_text'] = choosen_cat
             output['y'] = action_label_to_idx[choosen_cat]
             output['all_categories'] = all_valid_cats
-
         return output
 
     def get_label_sample(self, label, n=1, return_labels=False, return_index=False):
