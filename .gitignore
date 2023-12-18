@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 
 *.pt
+
+data/
+models/
