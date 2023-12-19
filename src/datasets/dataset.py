@@ -220,11 +220,11 @@ class Dataset(torch.utils.data.Dataset):
 
         inp, target = self.get_pose_data(data_index, frame_ix)
         output = {'inp': inp, 'target': target}
-        if hasattr(self, 'db') and 'clip_images' in self.db.keys():
-            output['clip_image'] = self.get_clip_image(data_index)
+        # if hasattr(self, 'db') and 'clip_images' in self.db.keys():
+        #     output['clip_image'] = self.get_clip_image(data_index)
 
-        if hasattr(self, 'db') and 'clip_pathes' in self.db.keys():
-            output['clip_path'] = self.get_clip_path(data_index)
+        # if hasattr(self, 'db') and 'clip_pathes' in self.db.keys():
+        #     output['clip_path'] = self.get_clip_path(data_index)
         
         if hasattr(self, 'db') and 'clip_text' in self.db.keys() and not self.use_action_cat_as_text_labels:
             output['clip_text'] = self.get_clip_text(data_index, frame_ix)

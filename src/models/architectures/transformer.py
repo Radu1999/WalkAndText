@@ -63,7 +63,7 @@ class ProjectionHead(nn.Module):
     
 class Encoder_TRANSFORMER(nn.Module):
     def __init__(self, modeltype, njoints, nfeats, num_frames, num_classes, translation, pose_rep, glob, glob_rot,
-                 latent_dim=256, ff_size=1024, num_layers=4, num_heads=4, dropout=0.1,
+                 latent_dim=512, ff_size=1024, num_layers=4, num_heads=4, dropout=0.1,
                  ablation=None, activation="gelu", **kargs):
         super().__init__()
         

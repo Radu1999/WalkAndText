@@ -72,8 +72,6 @@ class AMASS(Dataset):
         self.use_betas = False
         self.use_gender = False
         self.use_body_features = False
-        if 'clip_preprocess' in kwargs.keys():
-            self.clip_preprocess = kwargs['clip_preprocess']
 
         self.use_z = (use_z != 0)
 
@@ -121,10 +119,10 @@ class AMASS(Dataset):
             if self.use_body_features:
                 self._heights.extend([self.db['heights'][seq_idx]] * n_sub_seq)
                 self._masses.extend([self.db['masses'][seq_idx]] * n_sub_seq)
-            if 'clip_images' in self.db.keys():
-                images = [np.squeeze(e) for e in np.split(self.db['clip_images'][seq_idx][:n_sub_seq], n_sub_seq)]
-                processed_images = [self.clip_preprocess(Image.fromarray(img)) for img in images]
-                self._clip_images.extend(processed_images)
+            # if 'clip_images' in self.db.keys():
+            #     images = [np.squeeze(e) for e in np.split(self.db['clip_images'][seq_idx][:n_sub_seq], n_sub_seq)]
+            #     processed_images = [self.clip_preprocess(Image.fromarray(img)) for img in images]
+            #     self._clip_images.extend(processed_images)
             
             if 'clip_text' in self.db:
                 self._clip_texts.extend(np.split(np.array([self.db['clip_text'][seq_idx]] * n_sub_seq), n_sub_seq))
@@ -145,8 +143,8 @@ class AMASS(Dataset):
             assert len(self._poses) == len(self._betas)
         if self.use_gender:
             assert len(self._poses) == len(self._genders)
-        if 'clip_images' in self.db.keys():
-            assert len(self._poses) == len(self._clip_images)
+        # if 'clip_images' in self.db.keys():
+        #     assert len(self._poses) == len(self._clip_images)
 
         self._actions = np.array(self._actions)
         self._num_frames_in_video = np.array(self._num_frames_in_video)
