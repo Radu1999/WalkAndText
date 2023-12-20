@@ -14,6 +14,7 @@ import src.utils.fixseed  # noqa
 from src.utils.action_classifier import evaluate
 from src.parser.training import parser
 from src.utils.get_model_and_data import get_model_and_data
+from src.utils.misc import load_model_wo_clip
 
 def do_epochs(model, datasets, parameters, optimizer, writer):
     dataset = datasets["train"]
@@ -76,6 +77,11 @@ if __name__ == '__main__':
     parameters['only_60_classes'] = True
     parameters['clip_training'] = True
     model, datasets = get_model_and_data(parameters, split="all")
+    
+    # checkpointpath = os.path.join('./exps/contrastive_smaller_llm', 'checkpoint_0020.pth.tar')
+    # state_dict = torch.load(checkpointpath, map_location=parameters["device"])
+    # load_model_wo_clip(model, state_dict)
+    
     # parameters['use_action_cat_as_text_labels'] = False
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=parameters["lr"], weight_decay=0.1)

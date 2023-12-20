@@ -29,6 +29,10 @@ class CLIPLoss(torch.nn.Module):
         total_loss = (loss_motion(logits_per_motion,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
         return total_loss
 
+def mean_pooling(model_output, attention_mask):
+    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
 
 class CLIPose(nn.Module):
@@ -71,6 +75,8 @@ class CLIPose(nn.Module):
                           "translation": self.translation,
                           "vertstrans": self.vertstrans}
         self.loss = CLIPLoss()
+        # Initialize weights
+        self._init_weights()
 
     def rot2xyz(self, x, mask, get_rotations_back=False, **kwargs):
         kargs = self.param2xyz.copy()
@@ -115,4 +121,9 @@ class CLIPose(nn.Module):
         batch["motion_features"] = motion_features
         
         return loss, losses
+    
+    def _init_weights(self):
+        for p in self.parameters():
+            if p.dim() > 1 and p.requires_grad:
+                nn.init.xavier_uniform_(p)
     
