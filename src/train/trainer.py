@@ -31,31 +31,7 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
     simulated_bs = 1
     encoder_cache = []
     with grad_env():
-        # Get repr for gradient cache
-        if use_cache and mode == "train":
-            for i, batch in tqdm(enumerate(iterator), desc="Computing batch for caching"):
-                batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in batch.items()}
-                with torch.no_grad():
-                    model_rep = model.encode_motion(batch)
-                    model_reps.append(model_rep)
-                    text_rep = model.encode_text(batch['clip_text'])
-                    text_reps.append(text_rep)
-                if (i + 1) % simulated_bs == 0:
-                    model_reps = torch.cat(model_reps, dim=0)
-                    text_reps = torch.cat(text_reps, dim=0)
-                    model_reps.requires_grad_()
-
-                    loss = model.loss(model_reps, text_reps)
-                    loss.backward()
-
-                    # Create cache
-                    encoder_cache.append(model_reps.grad)
-                    model_reps = []
-                    text_reps = []
-        
         counter = 0
-        start_idx = 0
-        simulated_bs_idx = 0
         for i, batch in tqdm(enumerate(iterator), desc="Computing batch"):
             # Put everything in device
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
@@ -73,13 +49,35 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
                     dict_loss[key] += losses[key]
                     
             if use_cache and mode == "train":
+                # build cache in advance
+                if (i + 1) % simulated_bs == 0:
+                    model_reps = []
+                    text_reps = []
+                    start_idx = 0
+                    future_batches = list(islice(iterator, simulated_bs))
+                    for future_batch in future_batches:
+                         with torch.no_grad():
+                            model_rep = model.encode_motion(future_batch)
+                            model_reps.append(model_rep)
+                            text_rep = model.encode_text(future_batch['clip_text'])
+                            text_reps.append(text_rep)
+                    model_reps = torch.cat(model_reps, dim=0)
+                    text_reps = torch.cat(text_reps, dim=0)
+                    model_reps.requires_grad_()
+
+                    cache_loss = model.loss(model_reps, text_reps)
+                    cache_loss.backward()
+
+                    # Create cache
+                    encoder_cache = model_reps.grad
+                        
                 
-                encoder_gradient = encoder_cache[simulated_bs_idx][start_idx:start_idx + batch['motion_features'].shape[0]]
+                encoder_gradient = encoder_cache[start_idx:start_idx + batch['motion_features'].shape[0]]
                 if encoder_gradient.shape[0] < batch['motion_features'].shape[0]:
                     padding_size = batch['motion_features'].shape[0] - encoder_gradient.shape[0]
                     pad_values = (0, 0, 0, padding_size)
                     encoder_gradient = nn.functional.pad(encoder_gradient, pad_values, value=0)
-                batch['motion_features'].backward(encoder_gradient, retain_graph=True)
+                loss.backward(encoder_gradient)
                 start_idx += batch['motion_features'].shape[0]
                 
                 if (i + 1) % simulated_bs == 0:
