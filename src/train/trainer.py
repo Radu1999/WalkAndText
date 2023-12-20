@@ -21,7 +21,6 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
 
 
     # loss of the epoch
-    clip_loss = CLIPLoss()
     dict_loss = {}
     model_reps = []
     text_reps = []
