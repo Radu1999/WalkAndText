@@ -38,12 +38,11 @@ def mean_pooling(model_output, attention_mask):
 
 
 class CLIPose(nn.Module):
-    def __init__(self, encoder, decoder, device, lambdas, latent_dim, outputxyz,
+    def __init__(self, encoder, device, lambdas, latent_dim, outputxyz,
                  pose_rep, glob, glob_rot, translation, jointstype, vertstrans, clip_lambdas={}, **kwargs):
         super().__init__()
 
         self.encoder = encoder
-        self.decoder = decoder
         
         self.outputxyz = outputxyz
 
@@ -59,16 +58,16 @@ class CLIPose(nn.Module):
         self.jointstype = jointstype
         self.vertstrans = vertstrans
         
-        self.text_projection = ProjectionHead(embedding_dim=1024, projection_dim=512)
+        self.text_projection = ProjectionHead(embedding_dim=768, projection_dim=512)
         #self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=256)
         
-        # model_name = 'sentence-transformers/all-mpnet-base-v2'
-        # self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        # self.text_encoder = AutoModel.from_pretrained(model_name)
-        # for param in self.text_encoder.parameters():
-        #     param.requires_grad = False
+        model_name = 'sentence-transformers/all-mpnet-base-v2'
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.text_encoder = AutoModel.from_pretrained(model_name)
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
         # self.losses = list(self.lambdas) + ["mixed"]
-        self.text_encoder = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
+        # self.text_encoder = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
 
         self.rotation2xyz = Rotation2xyz(device=self.device)
         self.param2xyz = {"pose_rep": self.pose_rep,
@@ -105,22 +104,21 @@ class CLIPose(nn.Module):
         #return self.motion_projection(motion_embeddings)
     
     def encode_text(self, text):
-        return self.text_projection(self.text_encoder.encode(text, to_numpy=False))
-        # encoder_input = self.tokenizer(text, return_tensors="pt",
-        #                         padding=True, truncation=True).to(self.device)
-        # encoder_output = self.text_encoder(**encoder_input)
-        # sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
-        # sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
-        # # return sentence_embeddings
-        # return self.text_projection(sentence_embeddings)
+        # return self.text_projection(self.text_encoder.encode(text, to_numpy=False))
+        encoder_input = self.tokenizer(text, return_tensors="pt",
+                                padding=True, truncation=True).to(self.device)
+        encoder_output = self.text_encoder(**encoder_input)
+        sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
+        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        # return sentence_embeddings
+        return self.text_projection(sentence_embeddings)
     
     def forward(self, batch):
         text_features = self.encode_text(batch['clip_text'])
         motion_features = self.encode_motion(batch)
-        loss = self.loss(text_features, motion_features)
-        
-        losses = {}
-        losses["loss"] = loss.item()
+        loss = self.loss(text_features, motion_features)  
+        losses = {"loss": loss.item()}
+        batch["motion_features"] = motion_features
         
         return loss, losses
     

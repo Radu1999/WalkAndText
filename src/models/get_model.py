@@ -9,4 +9,4 @@ def get_model(parameters, **kwargs):
     encoder = Encoder_TRANSFORMER(**parameters)
     decoder = Decoder_TRANSFORMER(**parameters)
     parameters["outputxyz"] = "rcxyz" in parameters["lambdas"]
-    return CLIPose(encoder, decoder, **parameters).to(parameters["device"])
+    return CLIPose(encoder, **parameters).to(parameters["device"])
