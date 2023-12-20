@@ -8,6 +8,7 @@ from ..tools.losses import get_loss_function
 from ..rotation2xyz import Rotation2xyz
 import torch.nn.functional as F
 from angle_emb import AnglE
+from tqdm import tqdm
 
 loss_motion = nn.CrossEntropyLoss()
 loss_txt = nn.CrossEntropyLoss()
@@ -27,13 +28,6 @@ class CLIPLoss(torch.nn.Module):
 
         total_loss = (loss_motion(logits_per_motion,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
         return total_loss
-
-from tqdm import tqdm
-
-def mean_pooling(model_output, attention_mask):
-    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
 
 
