@@ -40,26 +40,26 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
             print(epochlog)
             print(epochlog, file=logfile)
             writer.flush()
-#             dict_loss = test(model, optimizer, test_iterator, model.device)
-#             for key in dict_loss.keys():
-#                 dict_loss[key] /= len(test_iterator)
-#                 wandb.log({f'val_{key}': dict_loss[key]})
-#                 writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
+            dict_loss = test(model, optimizer, test_iterator, model.device)
+            for key in dict_loss.keys():
+                dict_loss[key] /= len(test_iterator)
+                wandb.log({f'val_{key}': dict_loss[key]})
+                writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
 
-#             epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
-#             print(epochlog)
-#             print(epochlog, file=logfile)
-#             writer.flush()
+            epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
+            print(epochlog)
+            print(epochlog, file=logfile)
+            writer.flush()
                 
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
-                checkpoint_path = os.path.join(parameters["folder"],
-                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
-                print('Saving checkpoint {}'.format(checkpoint_path))
-                if parameters.get('clip_training', '') == '':
-                    state_dict_wo_clip = {k: v for k,v in model.state_dict().items() if not k.startswith('clip_model.')}
-                else:
-                    state_dict_wo_clip = model.state_dict()
-                torch.save(state_dict_wo_clip, checkpoint_path)
+                # checkpoint_path = os.path.join(parameters["folder"],
+                #                                'checkpoint_{:04d}.pth.tar'.format(epoch))
+                # print('Saving checkpoint {}'.format(checkpoint_path))
+                # if parameters.get('clip_training', '') == '':
+                #     state_dict_wo_clip = {k: v for k,v in model.state_dict().items() if not k.startswith('clip_model.')}
+                # else:
+                #     state_dict_wo_clip = model.state_dict()
+                # torch.save(state_dict_wo_clip, checkpoint_path)
                 model.eval()
                 if parameters.get("model", "default") != "default":
                     top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)

@@ -87,7 +87,8 @@ def evaluate_transformer_classifier(model, dataset, iterator, parameters):
                     
             labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
             logits = model.predict(batch)
-            predicted_classes = torch.topk(model_output, TOP_K_METRIC, dim=1)
+            predicted_classes = torch.topk(logits, TOP_K_METRIC, dim=1)
+            total_samples += len(predicted_classes)
             for predicted_class in predicted_classes:
                 # TOP-5 CHECK
                 if any([gt_cat_idx in predicted_class for gt_cat_idx in labels[i]]):

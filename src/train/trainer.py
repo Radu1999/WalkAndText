@@ -33,8 +33,6 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
     with grad_env():
         counter = 0
         for i, batch in tqdm(enumerate(iterator), desc="Computing batch"):
-            if i == 5:
-                break
             # Put everything in device
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
             batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in batch.items()}

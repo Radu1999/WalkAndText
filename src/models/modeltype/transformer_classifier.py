@@ -11,7 +11,7 @@ import random
 
 class PoseClassifier(nn.Module):
     def __init__(self, encoder, device, lambdas, latent_dim, outputxyz,
-                 pose_rep, glob, glob_rot, translation, jointstype, vertstrans, num_classes=60, hidden_size=768, clip_lambdas={}, **kwargs):
+                 pose_rep, glob, glob_rot, translation, jointstype, vertstrans, num_labels=60, hidden_size=768, clip_lambdas={}, **kwargs):
         super().__init__()
 
         self.encoder = encoder
@@ -30,13 +30,13 @@ class PoseClassifier(nn.Module):
         self.jointstype = jointstype
         self.vertstrans = vertstrans
         self.rotation2xyz = Rotation2xyz(device=self.device)
-        self.num_labels = num_classes
+        self.num_labels = num_labels
         
         self.classifier = nn.Sequential(
             nn.Linear(latent_dim, hidden_size),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_size, num_classes)
+            nn.Linear(hidden_size, num_labels)
         )
 
         
@@ -83,10 +83,11 @@ class PoseClassifier(nn.Module):
         possible_labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
         selected_labels = [random.choice(possible_label) for possible_label in possible_labels]        
         classification_output = self.predict(batch)
+        
         bs = batch['x'].shape[0]
-        labels = torch.zeros(bs, self.num_labels).to(batch['x'].device)
-        labels[range(bs), selected_labels] = 1
-
+        labels = torch.zeros((bs, self.num_labels)).to(batch['x'].device)
+        labels[range(bs), selected_labels] = 1.0
+        
         loss = self.loss(classification_output, labels)  
         losses = {"loss": loss.item()}
         
