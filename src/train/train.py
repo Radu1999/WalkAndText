@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from src.train.trainer import train, test
 from src.utils.tensors import collate
 import src.utils.fixseed  # noqa
-from src.utils.action_classifier import evaluate
+from src.utils.action_classifier import evaluate, evaluate_transformer_classifier
 from src.parser.training import parser
 from src.utils.get_model_and_data import get_model_and_data
 from src.utils.misc import load_model_wo_clip
@@ -61,7 +61,10 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
                     state_dict_wo_clip = model.state_dict()
                 torch.save(state_dict_wo_clip, checkpoint_path)
                 model.eval()
-                top_1, top_5 = evaluate(model, test_dataset, test_iterator, parameters)
+                if parameters.get("model", "default") != "default":
+                    top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)
+                else:
+                    top_1, top_5 = evaluate(model, test_dataset, test_iterator, parameters)
                 model.train()
                 wandb.log({'top_1_acc': top_1})
                 wandb.log({'top_5_acc': top_5})
@@ -77,6 +80,7 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=parameters["folder"])
     parameters['only_60_classes'] = True
     parameters['clip_training'] = True
+    parameters['model'] = 'classifier'
     model, datasets = get_model_and_data(parameters, split="all")
     
     # checkpointpath = os.path.join('./exps/contrastive_smaller_llm', 'checkpoint_0020.pth.tar')
