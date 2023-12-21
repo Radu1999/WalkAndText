@@ -18,10 +18,11 @@ from src.utils.misc import load_model_wo_clip
 
 def do_epochs(model, datasets, parameters, optimizer, writer):
     dataset = datasets["train"]
+    #dataset.sampling = 'random_conseq'
     test_dataset = datasets["test"]
     print(dataset.__getitem__(0)['clip_text'])
     train_iterator = DataLoader(dataset, batch_size=parameters["batch_size"],
-                                shuffle=True, num_workers=8, collate_fn=collate)
+                                shuffle=True, num_workers=16, collate_fn=collate)
     test_iterator = DataLoader(test_dataset, batch_size=160,
                       shuffle=False, num_workers=16, collate_fn=collate)
 
@@ -39,16 +40,16 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
             print(epochlog)
             print(epochlog, file=logfile)
             writer.flush()
-            dict_loss = test(model, optimizer, test_iterator, model.device)
-            for key in dict_loss.keys():
-                dict_loss[key] /= len(test_iterator)
-                wandb.log({f'val_{key}': dict_loss[key]})
-                writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
+#             dict_loss = test(model, optimizer, test_iterator, model.device)
+#             for key in dict_loss.keys():
+#                 dict_loss[key] /= len(test_iterator)
+#                 wandb.log({f'val_{key}': dict_loss[key]})
+#                 writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
 
-            epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
-            print(epochlog)
-            print(epochlog, file=logfile)
-            writer.flush()
+#             epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
+#             print(epochlog)
+#             print(epochlog, file=logfile)
+#             writer.flush()
                 
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
                 checkpoint_path = os.path.join(parameters["folder"],

@@ -69,6 +69,40 @@ def evaluate(model, dataset, iterator, parameters):
         top_1_acc = correct_preds_top_1 / total_samples
     return top_1_acc, top_5_acc
 
+def evaluate_transformer_classifier(model, dataset, iterator, parameters):
+    TOP_K_METRIC = 5
+    ground_truth_gen = list(action_label_to_idx.keys())
+    ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
+    
+    correct_preds_top_5, correct_preds_top_1 = 0,0
+    total_samples = 0
+    with torch.no_grad():
+        
+        for i, batch in enumerate(iterator):
+            if isinstance(batch['x'], list):
+                continue
+            for key in batch.keys():
+                if torch.is_tensor(batch[key]):
+                    batch[key] = batch[key].to(model.device)
+                    
+            labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
+            logits = model.predict(batch)
+            predicted_classes = torch.topk(model_output, TOP_K_METRIC, dim=1)
+            for predicted_class in predicted_classes:
+                # TOP-5 CHECK
+                if any([gt_cat_idx in predicted_class for gt_cat_idx in labels[i]]):
+                    correct_preds_top_5 += 1
+
+                # TOP-1 CHECK
+                predicted_class = predicted_class[:1]
+                if any([gt_cat_idx in predicted_class for gt_cat_idx in labels[i]]):
+                    correct_preds_top_1 += 1
+
+            # print(f"Current Top-5 Acc. : {100 * correct_preds_top_5 / total_samples:.2f}%")
+        
+        top_5_acc = correct_preds_top_5 / total_samples
+        top_1_acc = correct_preds_top_1 / total_samples
+    return top_1_acc, top_5_acc
     
 
 if __name__ == '__main__':

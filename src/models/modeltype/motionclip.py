@@ -76,7 +76,7 @@ class CLIPose(nn.Module):
                           "vertstrans": self.vertstrans}
         self.loss = CLIPLoss()
         # Initialize weights
-        self._init_weights()
+        # self._init_weights()
 
     def rot2xyz(self, x, mask, get_rotations_back=False, **kwargs):
         kargs = self.param2xyz.copy()

@@ -27,7 +27,7 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
     text_reps = []
     optimizer.zero_grad()
     torch.cuda.empty_cache()
-    use_cache = True
+    use_cache = False
     simulated_bs = 1
     encoder_cache = []
     with grad_env():
@@ -56,7 +56,8 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
                     start_idx = 0
                     future_batches = list(islice(iterator, simulated_bs))
                     for future_batch in future_batches:
-                         with torch.no_grad():
+                        future_batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in future_batch.items()}
+                        with torch.no_grad():
                             model_rep = model.encode_motion(future_batch)
                             model_reps.append(model_rep)
                             text_rep = model.encode_text(future_batch['clip_text'])
