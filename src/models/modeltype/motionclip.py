@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, AutoModel
+from transformers import MPNetTokenizerFast, AutoModel
 import clip
 from ..architectures.transformer import ProjectionHead
 from ..tools.losses import get_loss_function
@@ -9,6 +9,8 @@ from ..rotation2xyz import Rotation2xyz
 import torch.nn.functional as F
 from angle_emb import AnglE
 from tqdm import tqdm
+import random
+import joblib
 
 loss_motion = nn.CrossEntropyLoss()
 loss_txt = nn.CrossEntropyLoss()
@@ -34,10 +36,10 @@ def mean_pooling(model_output, attention_mask):
     input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
     return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
-
+    
 class CLIPose(nn.Module):
     def __init__(self, encoder, device, lambdas, latent_dim, outputxyz,
-                 pose_rep, glob, glob_rot, translation, jointstype, vertstrans, clip_lambdas={}, **kwargs):
+                 pose_rep, glob, glob_rot, translation, jointstype, vertstrans, text_sources=None, clip_lambdas={}, **kwargs):
         super().__init__()
 
         self.encoder = encoder
@@ -55,12 +57,13 @@ class CLIPose(nn.Module):
         self.translation = translation
         self.jointstype = jointstype
         self.vertstrans = vertstrans
+        self.text_sources = text_sources
         
         self.text_projection = ProjectionHead(embedding_dim=768, projection_dim=512)
         #self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=256)
         
         model_name = 'sentence-transformers/all-mpnet-base-v2'
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = MPNetTokenizerFast.from_pretrained(model_name)
         self.text_encoder = AutoModel.from_pretrained(model_name)
         for param in self.text_encoder.parameters():
             param.requires_grad = False
@@ -114,7 +117,18 @@ class CLIPose(nn.Module):
         return self.text_projection(sentence_embeddings)
     
     def forward(self, batch):
-        text_features = self.encode_text(batch['clip_text'])
+        if self.text_sources is None:
+            try:
+                text_features = self.encode_text(batch['clip_text'])
+            except:
+                print(batch['clip_text'])
+                exit(0)
+        else:
+            # choose category
+            categories = [random.choice(inner_list) for inner_list in batch['all_categories']]
+            descriptions = [random.choice(self.text_sources[category]) for category in categories]
+            text_features = self.encode_text(descriptions)
+
         motion_features = self.encode_motion(batch)
         loss = self.loss(text_features, motion_features)  
         losses = {"loss": loss.item()}

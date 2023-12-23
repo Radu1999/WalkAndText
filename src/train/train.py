@@ -5,6 +5,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'True'
 
 import torch
 import wandb
+import joblib
 from torch.utils.tensorboard import SummaryWriter
 
 from torch.utils.data import DataLoader
@@ -21,16 +22,23 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
     #dataset.sampling = 'random_conseq'
     test_dataset = datasets["test"]
     print(dataset.__getitem__(0)['clip_text'])
-    train_iterator = DataLoader(dataset, batch_size=parameters["batch_size"],
-                                shuffle=True, num_workers=16, collate_fn=collate)
     test_iterator = DataLoader(test_dataset, batch_size=160,
                       shuffle=False, num_workers=16, collate_fn=collate)
 
     logpath = os.path.join(parameters["folder"], "training.log")
-    
+    batch_size = 2
+    interval = 2
+    train_iterator = DataLoader(dataset, batch_size=batch_size,
+                            shuffle=True, num_workers=16, collate_fn=collate)
     with open(logpath, "w") as logfile:
         for epoch in range(1, parameters["num_epochs"]+1):
+            if epoch % interval == 0 and batch_size < 128:
+                batch_size *= 2
+                interval *= 2
+                train_iterator = DataLoader(dataset, batch_size=batch_size,
+                            shuffle=True, num_workers=16, collate_fn=collate)
             wandb.log({'epoch': epoch})
+            wandb.log({'batch size': batch_size})
             dict_loss = train(model, optimizer, train_iterator, model.device)
             for key in dict_loss.keys():
                 dict_loss[key] /= len(train_iterator)
@@ -40,20 +48,20 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
             print(epochlog)
             print(epochlog, file=logfile)
             writer.flush()
-            dict_loss = test(model, optimizer, test_iterator, model.device)
-            for key in dict_loss.keys():
-                dict_loss[key] /= len(test_iterator)
-                wandb.log({f'val_{key}': dict_loss[key]})
-                writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
+#             dict_loss = test(model, optimizer, test_iterator, model.device)
+#             for key in dict_loss.keys():
+#                 dict_loss[key] /= len(test_iterator)
+#                 wandb.log({f'val_{key}': dict_loss[key]})
+#                 writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
 
-            epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
-            print(epochlog)
-            print(epochlog, file=logfile)
-            writer.flush()
+#             epochlog = f"Epoch {epoch}, val losses: {dict_loss}"
+#             print(epochlog)
+#             print(epochlog, file=logfile)
+#             writer.flush()
                 
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
-                # checkpoint_path = os.path.join(parameters["folder"],
-                #                                'checkpoint_{:04d}.pth.tar'.format(epoch))
+                checkpoint_path = os.path.join(parameters["folder"],
+                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
                 # print('Saving checkpoint {}'.format(checkpoint_path))
                 # if parameters.get('clip_training', '') == '':
                 #     state_dict_wo_clip = {k: v for k,v in model.state_dict().items() if not k.startswith('clip_model.')}
@@ -80,10 +88,12 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=parameters["folder"])
     parameters['only_60_classes'] = True
     parameters['clip_training'] = True
-    parameters['model'] = 'classifier'
-    model, datasets = get_model_and_data(parameters, split="all")
+    # parameters['sampling'] = 'random'
+    #parameters['model'] = 'classifier'
+    #text_descriptions = joblib.load('./data/multiple_captions.pt')
+    model, datasets = get_model_and_data(parameters, split="all", descriptions=None)
     
-    # checkpointpath = os.path.join('./exps/contrastive_smaller_llm', 'checkpoint_0020.pth.tar')
+    # checkpointpath = os.path.join('./exps/pretraining', 'checkpoint_0020.pth.tar')
     # state_dict = torch.load(checkpointpath, map_location=parameters["device"])
     # load_model_wo_clip(model, state_dict)
     

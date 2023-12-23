@@ -35,6 +35,8 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
         for i, batch in tqdm(enumerate(iterator), desc="Computing batch"):
             # Put everything in device
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
+            if len(batch['clip_text']) == 0:
+                continue
             batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in batch.items()}
             counter += 1
             
@@ -44,7 +46,7 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
                 dict_loss = deepcopy(losses)
             else:
                 for key in dict_loss.keys():
-                    if (i + 1) % 51 == 0:
+                    if (i + 1) % 21 == 0:
                         wandb.log({key: losses[key]})
                     dict_loss[key] += losses[key]
                     
