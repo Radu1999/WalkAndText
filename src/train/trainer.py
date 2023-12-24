@@ -35,13 +35,15 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
         for i, batch in tqdm(enumerate(iterator), desc="Computing batch"):
             # Put everything in device
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
-            if len(batch['clip_text']) == 0:
+            if len(batch['clip_text']) == 0 or batch['x'].shape[0] == 1:
                 continue
             batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in batch.items()}
             counter += 1
             
             #fwd pass
             loss, losses = model(batch)
+            if loss == 0:
+                print(batch['motion_features'].size())
             if i == 0:
                 dict_loss = deepcopy(losses)
             else:

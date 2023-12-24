@@ -19,6 +19,7 @@ class CLIPLoss(torch.nn.Module):
     def __init__(self):
         super(CLIPLoss, self).__init__()
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.threshold = 200
         
     def forward(self, text_features, motion_features):
         # cosine similarity as logits
@@ -26,9 +27,11 @@ class CLIPLoss(torch.nn.Module):
         logits_per_motion = logit_scale * motion_features @ text_features.t()
         logits_per_text = logits_per_motion.t()
         
-        ground_truth = torch.arange(len(motion_features),dtype=torch.long,device=motion_features.device)
-
-        total_loss = (loss_motion(logits_per_motion,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
+        intrinsic_sim = text_features @ text_features.t()
+        target = torch.where(intrinsic_sim > self.threshold, torch.tensor(1.0), torch.tensor(0.0)).to(motion_features.device)
+        
+        #target = target.softmax(dim=1)
+        total_loss = (loss_motion(logits_per_motion,target) + loss_txt(logits_per_text,target)) / 2
         return total_loss
 
 def mean_pooling(model_output, attention_mask):
@@ -59,16 +62,16 @@ class CLIPose(nn.Module):
         self.vertstrans = vertstrans
         self.text_sources = text_sources
         
-        self.text_projection = ProjectionHead(embedding_dim=768, projection_dim=512)
-        #self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=256)
+        self.text_projection = ProjectionHead(embedding_dim=1024, projection_dim=768)
+        self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=768)
         
-        model_name = 'sentence-transformers/all-mpnet-base-v2'
-        self.tokenizer = MPNetTokenizerFast.from_pretrained(model_name)
-        self.text_encoder = AutoModel.from_pretrained(model_name)
-        for param in self.text_encoder.parameters():
-            param.requires_grad = False
+        # model_name = 'sentence-transformers/all-mpnet-base-v2'
+        # self.tokenizer = MPNetTokenizerFast.from_pretrained(model_name)
+        # self.text_encoder = AutoModel.from_pretrained(model_name)
+        # for param in self.text_encoder.parameters():
+        #     param.requires_grad = False
         # self.losses = list(self.lambdas) + ["mixed"]
-        # self.text_encoder = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
+        self.text_encoder = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
 
         self.rotation2xyz = Rotation2xyz(device=self.device)
         self.param2xyz = {"pose_rep": self.pose_rep,
@@ -103,18 +106,18 @@ class CLIPose(nn.Module):
         # encode
         motion_embeddings = self.encoder(batch)["mu"]
         motion_embeddings = F.normalize(motion_embeddings, p=2, dim=1)
-        return motion_embeddings
-        #return self.motion_projection(motion_embeddings)
+        #return motion_embeddings
+        return self.motion_projection(motion_embeddings)
     
     def encode_text(self, text):
-        # return self.text_projection(self.text_encoder.encode(text, to_numpy=False))
-        encoder_input = self.tokenizer(text, return_tensors="pt",
-                                padding=True, truncation=True).to(self.device)
-        encoder_output = self.text_encoder(**encoder_input)
-        sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
-        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
-        # return sentence_embeddings
-        return self.text_projection(sentence_embeddings)
+        return self.text_projection(self.text_encoder.encode(text, to_numpy=False))
+        # encoder_input = self.tokenizer(text, return_tensors="pt",
+        #                         padding=True, truncation=True).to(self.device)
+        # encoder_output = self.text_encoder(**encoder_input)
+        # sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
+        # sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        # # return sentence_embeddings
+        # return self.text_projection(sentence_embeddings)
     
     def forward(self, batch):
         if self.text_sources is None:
