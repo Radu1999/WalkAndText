@@ -8,6 +8,7 @@ import math
 import wandb
 import joblib
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from torch.utils.data import DataLoader
 from src.train.trainer import train, test
@@ -18,7 +19,7 @@ from src.parser.training import parser
 from src.utils.get_model_and_data import get_model_and_data
 from src.utils.misc import load_model_wo_clip
 
-def do_epochs(model, datasets, parameters, optimizer, writer):
+def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     dataset = datasets["train"]
     #dataset.sampling = 'random_conseq'
     test_dataset = datasets["test"]
@@ -43,6 +44,8 @@ def do_epochs(model, datasets, parameters, optimizer, writer):
             wandb.log({'epoch': epoch})
             wandb.log({'batch size': batch_size})
             dict_loss = train(model, optimizer, train_iterator, model.device)
+            if scheduler is not None:
+                scheduler.step()
             for key in dict_loss.keys():
                 dict_loss[key] /= len(train_iterator)
                 writer.add_scalar(f"Loss/{key}", dict_loss[key], epoch)
@@ -105,11 +108,12 @@ if __name__ == '__main__':
     # parameters['use_action_cat_as_text_labels'] = False
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=parameters["lr"], weight_decay=0.1)
+    scheduler = None # CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2)
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
     print("Training model..")
     wandb.login(key='93443c480bfbaa0b19be76d24f2efeb6be3319fd')
     wandb.init(project='text2motion', name='CLIP_SIMPLE')
     print(parameters)
-    do_epochs(model, datasets, parameters, optimizer, writer)
+    do_epochs(model, datasets, parameters, optimizer, writer, scheduler)
 
     writer.close()

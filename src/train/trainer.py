@@ -48,7 +48,7 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
                 dict_loss = deepcopy(losses)
             else:
                 for key in dict_loss.keys():
-                    if (i + 1) % 21 == 0:
+                    if (i + 1) % 51 == 0:
                         wandb.log({key: losses[key]})
                     dict_loss[key] += losses[key]
                     

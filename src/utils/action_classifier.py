@@ -37,6 +37,7 @@ def evaluate(model, dataset, iterator, parameters):
     with torch.no_grad():
         
         text_features = model.encode_text(ground_truth_gen)
+        text_features =  F.normalize(text_features, p=2, dim=1)
         # classes_text_emb_norm =  F.normalize(classes_text_emb, p=2, dim=-1)
         for i, batch in enumerate(iterator):
             if isinstance(batch['x'], list):
@@ -47,6 +48,7 @@ def evaluate(model, dataset, iterator, parameters):
                     
             labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
             motion_features = model.encode_motion(batch)
+            motion_features = F.normalize(motion_features, p=2, dim=1)
             similarity =  model.loss.logit_scale * motion_features @ text_features.t()
             
             total_samples += motion_features.shape[0]

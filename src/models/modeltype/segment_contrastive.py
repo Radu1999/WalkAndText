@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, AutoModel
+from transformers import MPNetTokenizerFast, AutoModel
 import clip
 from ..architectures.transformer import ProjectionHead
 from ..tools.losses import get_loss_function
@@ -19,27 +19,16 @@ class CLIPLoss(torch.nn.Module):
     def __init__(self):
         super(CLIPLoss, self).__init__()
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.threshold = 0.9
         
     def forward(self, text_features, motion_features):
         # cosine similarity as logits
-        text_features = F.normalize(text_features, p=2, dim=1)
-        motion_features = F.normalize(motion_features, p=2, dim=1)
-        
         logit_scale = self.logit_scale.exp().to(motion_features.device)
         logits_per_motion = logit_scale * motion_features @ text_features.t()
         logits_per_text = logits_per_motion.t()
         
-        intrinsic_sim = text_features @ text_features.t()
-        target = torch.eye(len(motion_features)).to(motion_features.device)
-        print(target / target.sum(dim=1))
-        mask = torch.where(intrinsic_sim >= self.threshold, torch.tensor(0.0), torch.tensor(1.0)).to(motion_features.device)
-        mask = mask + target
-        total_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
-        print(total_loss)
-        total_loss = (loss_motion(logits_per_motion,target) + loss_txt(logits_per_text,target)) / 2
-        print(total_loss)
-        exit(0)
+        ground_truth = torch.arange(len(motion_features),dtype=torch.long,device=motion_features.device)
+
+        total_loss = (loss_motion(logits_per_motion,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
         return total_loss
 
 def mean_pooling(model_output, attention_mask):
@@ -48,15 +37,13 @@ def mean_pooling(model_output, attention_mask):
     return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
     
-class CLIPose(nn.Module):
+class SegmentPose(nn.Module):
     def __init__(self, encoder, device, lambdas, latent_dim, outputxyz,
                  pose_rep, glob, glob_rot, translation, jointstype, vertstrans, text_sources=None, clip_lambdas={}, **kwargs):
         super().__init__()
-        self.encoder = encoder
-        # self.text_projection = ProjectionHead(embedding_dim=1024, projection_dim=768, dropout=0.2)
-        self.motion_projection = ProjectionHead(embedding_dim=768, projection_dim=1024, dropout=0.2)
-        self._init_weights()
 
+        self.encoder = encoder
+        
         self.outputxyz = outputxyz
 
         self.lambdas = lambdas
@@ -72,14 +59,17 @@ class CLIPose(nn.Module):
         self.vertstrans = vertstrans
         self.text_sources = text_sources
         
+        #self.text_projection = ProjectionHead(embedding_dim=768, projection_dim=512)
+        self.motion_projection = ProjectionHead(embedding_dim=512, projection_dim=768)
         
+        # model_name = 'sentence-transformers/all-mpnet-base-v2'
+        # self.tokenizer = MPNetTokenizerFast.from_pretrained(model_name)
+        # self.text_encoder = AutoModel.from_pretrained(model_name)
         
-        model_name = 'WhereIsAI/UAE-Large-V1' # 'sentence-transformers/all-mpnet-base-v2'
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.text_encoder = AutoModel.from_pretrained(model_name)
+        # self.losses = list(self.lambdas) + ["mixed"]
+        self.text_encoder = AnglE.from_pretrained('WhereIsAI/UAE-Large-V1', pooling_strategy='cls').cuda()
         for param in self.text_encoder.parameters():
             param.requires_grad = False
-        # self.losses = list(self.lambdas) + ["mixed"]
 
         self.rotation2xyz = Rotation2xyz(device=self.device)
         self.param2xyz = {"pose_rep": self.pose_rep,
@@ -90,7 +80,7 @@ class CLIPose(nn.Module):
                           "vertstrans": self.vertstrans}
         self.loss = CLIPLoss()
         # Initialize weights
-        
+        # self._init_weights()
 
     def rot2xyz(self, x, mask, get_rotations_back=False, **kwargs):
         kargs = self.param2xyz.copy()
@@ -113,15 +103,18 @@ class CLIPose(nn.Module):
             batch["x_xyz"] = batch["x"]
         # encode
         motion_embeddings = self.encoder(batch)["mu"]
-        # return motion_embeddings
-        return self.motion_projection(motion_embeddings)
+        motion_embeddings = F.normalize(motion_embeddings, p=2, dim=1)
+        return motion_embeddings
+        #return self.motion_projection(motion_embeddings)
     
     def encode_text(self, text):
-        encoder_input = self.tokenizer(text, return_tensors="pt",
-                                padding=True, truncation=True).to(self.device)
-        encoder_output = self.text_encoder(**encoder_input)
-        sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
-        return sentence_embeddings
+        return self.text_projection(self.text_encoder.encode(text, to_numpy=False))
+        # encoder_input = self.tokenizer(text, return_tensors="pt",
+        #                         padding=True, truncation=True).to(self.device)
+        # encoder_output = self.text_encoder(**encoder_input)
+        # sentence_embeddings = mean_pooling(encoder_output, encoder_input['attention_mask'])
+        # sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        # return sentence_embeddings
         # return self.text_projection(sentence_embeddings)
     
     def forward(self, batch):
