@@ -32,14 +32,9 @@ class CLIPLoss(torch.nn.Module):
         
         intrinsic_sim = text_features @ text_features.t()
         target = torch.eye(len(motion_features)).to(motion_features.device)
-        print(target / target.sum(dim=1))
         mask = torch.where(intrinsic_sim >= self.threshold, torch.tensor(0.0), torch.tensor(1.0)).to(motion_features.device)
         mask = mask + target
         total_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
-        print(total_loss)
-        total_loss = (loss_motion(logits_per_motion,target) + loss_txt(logits_per_text,target)) / 2
-        print(total_loss)
-        exit(0)
         return total_loss
 
 def mean_pooling(model_output, attention_mask):

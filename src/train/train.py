@@ -30,17 +30,12 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     logpath = os.path.join(parameters["folder"], "training.log")
     batch_size = 80
     interval = 2
+    counter = 0
     train_iterator = DataLoader(dataset, batch_size=batch_size,
                             shuffle=True, num_workers=16, collate_fn=collate)
     with open(logpath, "w") as logfile:
         for epoch in range(1, parameters["num_epochs"]+1):
-            # if epoch % interval == 0 and batch_size < 128:
-            #     batch_size *= 2
-            #     interval *= 2
-            #     for param_group in optimizer.param_groups:
-            #         param_group['lr'] = param_group['lr'] * math.sqrt(2)
-            #     train_iterator = DataLoader(dataset, batch_size=batch_size,
-            #                 shuffle=True, num_workers=16, collate_fn=collate)
+            counter += 1
             wandb.log({'epoch': epoch})
             wandb.log({'batch size': batch_size})
             dict_loss = train(model, optimizer, train_iterator, model.device)
@@ -85,7 +80,14 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 print(f'Top 1: {top_1}')
                 print(f'Top 5: {top_5}')
                 
-
+            # if counter % interval == 0 and batch_size < 128:
+            #     batch_size *= 2
+            #     interval *= 2
+            #     counter = 0
+            #     for param_group in optimizer.param_groups:
+            #         param_group['lr'] = param_group['lr'] * math.sqrt(2)
+            #     train_iterator = DataLoader(dataset, batch_size=batch_size,
+            #                 shuffle=True, num_workers=16, collate_fn=collate)
             writer.flush()
 
 
