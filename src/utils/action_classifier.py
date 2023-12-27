@@ -30,7 +30,8 @@ def evaluate(model, dataset, iterator, parameters):
         ground_truth = joblib.load('./data/babel_llm_1_smaller/grountruth.pt')
         ground_truth.sort(key=lambda x: action_label_to_idx[x['orig']])
         ground_truth_gen = [gt['generated'] for gt in ground_truth]
-    ground_truth_gen = ground_truth_gen[:60]
+    ground_truth_gen = ground_truth_gen[60:]
+    
     
     correct_preds_top_5, correct_preds_top_1 = 0,0
     total_samples = 0

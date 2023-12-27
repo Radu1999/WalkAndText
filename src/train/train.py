@@ -30,17 +30,12 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     logpath = os.path.join(parameters["folder"], "training.log")
     batch_size = 80
     interval = 2
+    counter = 0
     train_iterator = DataLoader(dataset, batch_size=batch_size,
                             shuffle=True, num_workers=16, collate_fn=collate)
     with open(logpath, "w") as logfile:
         for epoch in range(1, parameters["num_epochs"]+1):
-            # if epoch % interval == 0 and batch_size < 128:
-            #     batch_size *= 2
-            #     interval *= 2
-            #     for param_group in optimizer.param_groups:
-            #         param_group['lr'] = param_group['lr'] * math.sqrt(2)
-            #     train_iterator = DataLoader(dataset, batch_size=batch_size,
-            #                 shuffle=True, num_workers=16, collate_fn=collate)
+            counter += 1
             wandb.log({'epoch': epoch})
             wandb.log({'batch size': batch_size})
             dict_loss = train(model, optimizer, train_iterator, model.device)
@@ -66,14 +61,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
             writer.flush()
                 
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
-                checkpoint_path = os.path.join(parameters["folder"],
-                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
-                # print('Saving checkpoint {}'.format(checkpoint_path))
-                # if parameters.get('clip_training', '') == '':
-                #     state_dict_wo_clip = {k: v for k,v in model.state_dict().items() if not k.startswith('clip_model.')}
-                # else:
-                #     state_dict_wo_clip = model.state_dict()
-                # torch.save(state_dict_wo_clip, checkpoint_path)
+                
                 model.eval()
                 if parameters.get("model", "default") != "default":
                     top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)
@@ -84,8 +72,20 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 wandb.log({'top_5_acc': top_5})
                 print(f'Top 1: {top_1}')
                 print(f'Top 5: {top_5}')
+                checkpoint_path = os.path.join(parameters["folder"],
+                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
+                if top_1 > 0.46:
+                    print('Saving checkpoint {}'.format(checkpoint_path))
+                    torch.save(model.state_dict(), checkpoint_path)
                 
-
+            # if counter % interval == 0 and batch_size < 128:
+            #     batch_size *= 2
+            #     interval *= 2
+            #     counter = 0
+            #     for param_group in optimizer.param_groups:
+            #         param_group['lr'] = param_group['lr'] * math.sqrt(2)
+            #     train_iterator = DataLoader(dataset, batch_size=batch_size,
+            #                 shuffle=True, num_workers=16, collate_fn=collate)
             writer.flush()
 
 
