@@ -46,14 +46,17 @@ class ProjectionHead(nn.Module):
         dropout=0.1
     ):
         super().__init__()
-        self.projection1 = nn.Linear(embedding_dim, 512)
-        self.projection2 = nn.Linear(512, projection_dim)
+        self.projection1 = nn.Linear(embedding_dim, projection_dim // 2)
+        self.projection2 = nn.Linear(projection_dim // 2, projection_dim)
         self.gelu = nn.GELU()
         self.fc = nn.Linear(projection_dim, projection_dim)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(projection_dim)
     
     def forward(self, x):
+        # projected = self.projection1(x)
+        # #projected = self.dropout(projected)
+        # return projected
         projected = self.projection1(x)
         projected = self.dropout(projected)
         projected = self.gelu(projected)
