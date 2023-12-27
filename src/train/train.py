@@ -61,14 +61,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
             writer.flush()
                 
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
-                checkpoint_path = os.path.join(parameters["folder"],
-                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
-                # print('Saving checkpoint {}'.format(checkpoint_path))
-                # if parameters.get('clip_training', '') == '':
-                #     state_dict_wo_clip = {k: v for k,v in model.state_dict().items() if not k.startswith('clip_model.')}
-                # else:
-                #     state_dict_wo_clip = model.state_dict()
-                # torch.save(state_dict_wo_clip, checkpoint_path)
+                
                 model.eval()
                 if parameters.get("model", "default") != "default":
                     top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)
@@ -79,6 +72,11 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 wandb.log({'top_5_acc': top_5})
                 print(f'Top 1: {top_1}')
                 print(f'Top 5: {top_5}')
+                checkpoint_path = os.path.join(parameters["folder"],
+                                               'checkpoint_{:04d}.pth.tar'.format(epoch))
+                if top_1 > 0.46:
+                    print('Saving checkpoint {}'.format(checkpoint_path))
+                    torch.save(model.state_dict(), checkpoint_path)
                 
             # if counter % interval == 0 and batch_size < 128:
             #     batch_size *= 2
