@@ -16,3 +16,4 @@ EVALSEED = 0
 torch.backends.cudnn.benchmark = False
 
 fixseed(SEED)
+print('fixed seed')
