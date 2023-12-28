@@ -8,7 +8,7 @@ import math
 import wandb
 import joblib
 from torch.utils.tensorboard import SummaryWriter
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from torch.utils.data import DataLoader
 from src.train.trainer import train, test
@@ -33,12 +33,14 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     counter = 0
     train_iterator = DataLoader(dataset, batch_size=batch_size,
                             shuffle=True, num_workers=16, collate_fn=collate)
+    
+    scheduler = CosineAnnealingLR(optimizer, T_max=2000, eta_min=0)
     with open(logpath, "w") as logfile:
         for epoch in range(1, parameters["num_epochs"]+1):
             counter += 1
             wandb.log({'epoch': epoch})
             wandb.log({'batch size': batch_size})
-            dict_loss = train(model, optimizer, train_iterator, model.device)
+            dict_loss = train(model, optimizer, scheduler, train_iterator, model.device )
             if scheduler is not None:
                 scheduler.step()
             for key in dict_loss.keys():
@@ -50,6 +52,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
             print(epochlog, file=logfile)
             writer.flush()
             dict_loss = test(model, optimizer, test_iterator, model.device)
+            
             for key in dict_loss.keys():
                 dict_loss[key] /= len(test_iterator)
                 wandb.log({f'val_{key}': dict_loss[key]})

@@ -9,7 +9,7 @@ import numpy as np
 import torch.nn as nn
 from itertools import islice
 
-def train_or_test(model, optimizer, iterator, device, mode="train"):
+def train_or_test(model, optimizer, scheduler, iterator, device, mode="train"):
     if mode == "train":
         model.train()
         grad_env = torch.enable_grad
@@ -37,19 +37,26 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
             if len(batch['clip_text']) == 0 or batch['x'].shape[0] == 1:
                 continue
-            batch = {key: val.to(device) if torch.is_tensor(val) else val for key, val in batch.items()}
+            batch = {key: val.half().to(device) if torch.is_tensor(val) and key != 'mask' and key != 'y'  else val for key, val in batch.items()}
+            batch['mask'] = batch['mask'].to(device)
+            batch['y'] = batch['y'].to(device)
             counter += 1
             
             #fwd pass
-            loss, losses = model(batch)
+            with torch.cuda.amp.autocast():
+                loss, losses = model(batch)
             if loss == 0:
                 print(batch['motion_features'].size())
             if i == 0:
                 dict_loss = deepcopy(losses)
             else:
+                if (i + 1) % 51 == 0:
+                    if scheduler is not None:
+                        wandb.log({'lr': scheduler.get_last_lr()[0]})
                 for key in dict_loss.keys():
                     if (i + 1) % 51 == 0:
                         wandb.log({key: losses[key]})
+                        
                     dict_loss[key] += losses[key]
                     
             if use_cache and mode == "train":
@@ -97,15 +104,17 @@ def train_or_test(model, optimizer, iterator, device, mode="train"):
             if mode == "train":
                 loss.backward()
                 optimizer.step()
+                if scheduler is not None:
+                     scheduler.step()
                 optimizer.zero_grad()
         
     torch.cuda.empty_cache()
     return dict_loss
 
 
-def train(model, optimizer, iterator, device):
-    return train_or_test(model, optimizer, iterator, device, mode="train")
+def train(model, optimizer, scheduler, iterator, device):
+    return train_or_test(model, optimizer, scheduler, iterator, device, mode="train")
 
 
 def test(model, optimizer, iterator, device):
-    return train_or_test(model, optimizer, iterator, device, mode="test")
+    return train_or_test(model, optimizer, None, iterator, device, mode="test")
