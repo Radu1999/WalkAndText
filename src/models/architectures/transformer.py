@@ -55,7 +55,7 @@ class ProjectionHead(nn.Module):
     
     def forward(self, x):
         # projected = self.projection1(x)
-        # #projected = self.dropout(projected)
+        # projected = self.dropout(projected)
         # return projected
         projected = self.projection1(x)
         projected = self.dropout(projected)

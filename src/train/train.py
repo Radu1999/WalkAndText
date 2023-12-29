@@ -23,18 +23,18 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     dataset = datasets["train"]
     #dataset.sampling = 'random_conseq'
     test_dataset = datasets["test"]
-    #print(dataset.__getitem__(0)['clip_text'])
+    print(dataset.__getitem__(0)['clip_text'])
     test_iterator = DataLoader(test_dataset, batch_size=160,
                       shuffle=False, num_workers=16, collate_fn=collate)
 
     logpath = os.path.join(parameters["folder"], "training.log")
-    batch_size = 80
+    batch_size = parameters['batch_size']
     interval = 2
     counter = 0
     train_iterator = DataLoader(dataset, batch_size=batch_size,
                             shuffle=True, num_workers=16, collate_fn=collate)
     
-    scheduler = CosineAnnealingLR(optimizer, T_max=2000, eta_min=0)
+    scheduler = None #CosineAnnealingLR(optimizer, T_max=2000, eta_min=1e-6)
     with open(logpath, "w") as logfile:
         for epoch in range(1, parameters["num_epochs"]+1):
             counter += 1
@@ -101,8 +101,9 @@ if __name__ == '__main__':
     parameters['clip_training'] = True
     # parameters['sampling'] = 'random'
     #parameters['model'] = 'classifier'
-    #text_descriptions = joblib.load('./data/multiple_captions.pt')
-    model, datasets = get_model_and_data(parameters, split="all", descriptions=None)
+    text_descriptions = joblib.load('./data/multiple_captions.pt')
+    model, datasets = get_model_and_data(parameters, split="all", descriptions=text_descriptions)
+    model.precompute_tokens()
     
     # checkpointpath = os.path.join('./exps/pretraining', 'checkpoint_0020.pth.tar')
     # state_dict = torch.load(checkpointpath, map_location=parameters["device"])

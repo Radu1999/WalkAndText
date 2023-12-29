@@ -37,14 +37,14 @@ def train_or_test(model, optimizer, scheduler, iterator, device, mode="train"):
             # Added if is_tensor as 'clip_text' in batch is a list of strings, not a tensor!
             if len(batch['clip_text']) == 0 or batch['x'].shape[0] == 1:
                 continue
-            batch = {key: val.half().to(device) if torch.is_tensor(val) and key != 'mask' and key != 'y'  else val for key, val in batch.items()}
+            batch = {key: val.to(device) if torch.is_tensor(val) and key != 'mask' and key != 'y'  else val for key, val in batch.items()}
             batch['mask'] = batch['mask'].to(device)
             batch['y'] = batch['y'].to(device)
             counter += 1
             
             #fwd pass
-            with torch.cuda.amp.autocast():
-                loss, losses = model(batch)
+            #with torch.cuda.amp.autocast():
+            loss, losses = model(batch)
             if loss == 0:
                 print(batch['motion_features'].size())
             if i == 0:
