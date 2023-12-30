@@ -58,7 +58,7 @@ def get_trans_from_vibe(vibe, use_z=True):
 class AMASS(Dataset):
     dataname = "amass"
 
-    def __init__(self, datapath="data/amass/amass_db/babel_30fps_db.pt", split="vald", use_z=1, **kwargs):
+    def __init__(self, datapath="data/amass/amass_db/babel_30fps_db.pt", split="vald", use_z=1, preprocess=None, **kwargs):
         assert '_db.pt' in datapath
         self.datapath = datapath.replace('_db.pt', '_{}.pt'.format(split))
         assert os.path.exists(self.datapath)
@@ -72,6 +72,7 @@ class AMASS(Dataset):
         self.use_betas = False
         self.use_gender = False
         self.use_body_features = False
+        self.preprocess = preprocess
 
         self.use_z = (use_z != 0)
 
@@ -119,10 +120,10 @@ class AMASS(Dataset):
             if self.use_body_features:
                 self._heights.extend([self.db['heights'][seq_idx]] * n_sub_seq)
                 self._masses.extend([self.db['masses'][seq_idx]] * n_sub_seq)
-            # if 'clip_images' in self.db.keys():
-            #     images = [np.squeeze(e) for e in np.split(self.db['clip_images'][seq_idx][:n_sub_seq], n_sub_seq)]
-            #     processed_images = [self.clip_preprocess(Image.fromarray(img)) for img in images]
-            #     self._clip_images.extend(processed_images)
+            if 'clip_images' in self.db.keys() and self.preprocess is not None:
+                images = [np.squeeze(e) for e in np.split(self.db['clip_images'][seq_idx][:n_sub_seq], n_sub_seq)]
+                processed_images = [self.preprocess(Image.fromarray(img)) for img in images]
+                self._clip_images.extend(processed_images)
             
             if 'clip_text' in self.db:
                 self._clip_texts.extend(np.split(np.array([self.db['clip_text'][seq_idx]] * n_sub_seq), n_sub_seq))
@@ -204,7 +205,7 @@ if __name__ == "__main__":
     device = 'cpu'
     clip_model, clip_preprocess = clip.load("ViT-B/32", device=device,
                                         jit=False)  # Must set jit=False for training
-    dataset = AMASS(clip_preprocess=clip_preprocess)
+    dataset = AMASS(preprocess=clip_preprocess)
     print(torch.tensor(dataset._load_rotvec(0, 0)).shape)
     print(dataset.__getitem__(0)['inp'].shape)
     print(dataset.__getitem__(0)['inp'][0])

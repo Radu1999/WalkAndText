@@ -22,10 +22,10 @@ class CLIPLoss(torch.nn.Module):
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.threshold = 0.9
         
-    def forward(self, text_features, motion_features, generated_text_features):
-        # cosine similarity as logits
+    def forward(self, text_features, motion_features, generated_text_features, image_features):
         text_features = F.normalize(text_features, p=2, dim=1)
         motion_features = F.normalize(motion_features, p=2, dim=1)
+        generated_text_features = F.normalize(generated_text_features, p=2, dim=1)
         
         logit_scale = self.logit_scale.exp().to(motion_features.device)
         logits_per_motion = logit_scale * motion_features @ text_features.t()
@@ -37,7 +37,7 @@ class CLIPLoss(torch.nn.Module):
         mask = mask + target
         clip_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
         
-        generated_text_features = torch.squeeze(generated_text_features, dim=1)
+
         logits_per_motion = logit_scale * motion_features @ generated_text_features.t()
         logits_per_text = logits_per_motion.t()
         
@@ -45,8 +45,9 @@ class CLIPLoss(torch.nn.Module):
         target = torch.eye(len(motion_features)).to(motion_features.device)
         mask = torch.where(intrinsic_sim >= self.threshold, torch.tensor(0.0), torch.tensor(1.0)).to(motion_features.device)
         mask = mask + target
-        additional_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
-        return clip_loss + additional_loss
+        generated_text_losss = (loss_motion(logits_per_motion * target,target) + loss_txt(logits_per_text * target,target)) / 2
+        
+        return clip_loss + generated_text_losss
 
 def mean_pooling(model_output, attention_mask):
     token_embeddings = model_output[0] #First element of model_output contains all token embeddings
@@ -60,7 +61,7 @@ class CLIPose(nn.Module):
         super().__init__()
         self.encoder = encoder
         # self.text_projection = ProjectionHead(embedding_dim=1024, projection_dim=768, dropout=0.2)
-        self.motion_projection = ProjectionHead(embedding_dim=768, projection_dim=1024, dropout=0.2)
+        self.motion_projection = ProjectionHead(embedding_dim=768, projection_dim=1024, dropout=0.1)
         self._init_weights()
 
         self.outputxyz = outputxyz
@@ -77,9 +78,8 @@ class CLIPose(nn.Module):
         self.jointstype = jointstype
         self.vertstrans = vertstrans
         self.text_sources = text_sources
-        
-        
-        
+        self.clip_model, _ =  clip.load("ViT-B/32", device='cpu',
+                                    jit=False) 
         
         model_name = 'WhereIsAI/UAE-Large-V1' # 'sentence-transformers/all-mpnet-base-v2'
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -132,6 +132,9 @@ class CLIPose(nn.Module):
         return sentence_embeddings
         # return self.text_projection(sentence_embeddings)
     
+    def encode_image(self, batch):
+        pass
+    
     def forward(self, batch):
         if self.text_sources is None:
             try:
@@ -143,20 +146,23 @@ class CLIPose(nn.Module):
             # choose category
             categories = [random.choice(inner_list) for inner_list in batch['all_categories']]
             descriptions = [random.choice(self.text_sources[category]) for category in categories]
-            generated_text_features = torch.stack(descriptions)
-            text_features = self.encode_text(batch['clip_text'])
+            generated_text_features = torch.squeeze(torch.stack(descriptions), dim=1)
+            text_features = torch.squeeze(torch.stack([self.label_enc[elem] for elem in batch['clip_text']]), dim=1)
 
         motion_features = self.encode_motion(batch)
-        loss = self.loss(text_features, motion_features, generated_text_features)  
+        image_features = None # self.clip_model.encode_image(batch['clip_images'])
+        loss = self.loss(text_features, motion_features, generated_text_features, image_features)  
         losses = {"loss": loss.item()}
         batch["motion_features"] = motion_features
         
         return loss, losses
     
     def precompute_tokens(self):
+        self.label_enc = {}
         if self.text_sources is not None:
             for key, value in self.text_sources.items():
                 self.text_sources[key] = [self.encode_text(elem) for elem in value[:10]]
+                self.label_enc[key] = self.encode_text(key) 
     
     def _init_weights(self):
         for p in self.parameters():

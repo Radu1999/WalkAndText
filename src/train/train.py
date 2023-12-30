@@ -77,7 +77,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 print(f'Top 5: {top_5}')
                 checkpoint_path = os.path.join(parameters["folder"],
                                                'checkpoint_{:04d}.pth.tar'.format(epoch))
-                if top_1 > 0.46:
+                if top_1 > 0.48:
                     print('Saving checkpoint {}'.format(checkpoint_path))
                     torch.save(model.state_dict(), checkpoint_path)
                 
