@@ -28,6 +28,7 @@ class Dataset(torch.utils.data.Dataset):
 
         self.use_action_cat_as_text_labels = kwargs.get('use_action_cat_as_text_labels', False)
         self.only_60_classes = kwargs.get('only_60_classes', False)
+        self.last_60_classes = kwargs.get('last_60_classes', False)
         self.leave_out_15_classes = kwargs.get('leave_out_15_classes', False)
         self.use_only_15_classes = kwargs.get('use_only_15_classes', False)
 
@@ -238,7 +239,7 @@ class Dataset(torch.utils.data.Dataset):
                     if cat not in action_label_to_idx:
                         continue
                     cat_idx = action_label_to_idx[cat]
-                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                         continue
                     if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                         continue
@@ -262,7 +263,7 @@ class Dataset(torch.utils.data.Dataset):
                     if cat not in action_label_to_idx:
                         continue
                     cat_idx = action_label_to_idx[cat]
-                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60)  or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                         continue
                     if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                         continue

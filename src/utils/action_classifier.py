@@ -30,7 +30,7 @@ def evaluate(model, dataset, iterator, parameters):
         ground_truth = joblib.load('./data/babel_llm_1_smaller/grountruth.pt')
         ground_truth.sort(key=lambda x: action_label_to_idx[x['orig']])
         ground_truth_gen = [gt['generated'] for gt in ground_truth]
-    ground_truth_gen = ground_truth_gen[:60]
+    ground_truth_gen = ground_truth_gen[:120]
     
     
     correct_preds_top_5, correct_preds_top_1 = 0,0
@@ -38,7 +38,7 @@ def evaluate(model, dataset, iterator, parameters):
     with torch.no_grad():
         
         text_features = model.encode_text(ground_truth_gen)
-        text_features =  F.normalize(text_features, p=2, dim=1)
+        text_features =  text_features / text_features.norm(dim=-1, keepdim=True)
         # classes_text_emb_norm =  F.normalize(classes_text_emb, p=2, dim=-1)
         for i, batch in enumerate(iterator):
             if isinstance(batch['x'], list):
@@ -49,8 +49,8 @@ def evaluate(model, dataset, iterator, parameters):
                     
             labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
             motion_features = model.encode_motion(batch)
-            motion_features = F.normalize(motion_features, p=2, dim=1)
-            similarity =  model.loss.logit_scale * motion_features @ text_features.t()
+            motion_features = motion_features / motion_features.norm(dim=-1, keepdim=True)
+            similarity =  motion_features @ text_features.t()
             
             total_samples += motion_features.shape[0]
             for i in range(similarity.shape[0]):

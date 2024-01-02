@@ -97,12 +97,12 @@ if __name__ == '__main__':
     parameters = parser()
     # logging tensorboard
     writer = SummaryWriter(log_dir=parameters["folder"])
-    parameters['only_60_classes'] = True
+    # parameters['only_60_classes'] = True
     parameters['clip_training'] = True
     # parameters['sampling'] = 'random'
     #parameters['model'] = 'classifier'
-    text_descriptions = joblib.load('./data/multiple_captions.pt')
-    model, datasets = get_model_and_data(parameters, split="all", descriptions=text_descriptions)
+    # text_descriptions = joblib.load('./data/multiple_captions.pt')
+    model, datasets = get_model_and_data(parameters, split="all", descriptions=None)
     model.precompute_tokens()
     
     # checkpointpath = os.path.join('./exps/pretraining', 'checkpoint_0020.pth.tar')

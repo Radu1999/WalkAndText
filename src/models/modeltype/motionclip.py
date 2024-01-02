@@ -25,7 +25,7 @@ class CLIPLoss(torch.nn.Module):
         self.threshold = 0.9
         
     def forward(self, text_features, motion_features, generated_text_features):
-        generated_text_features = torch.squeeze(generated_text_features, dim=1)
+      
         
         text_features_norm = F.normalize(text_features, p=2, dim=1)
         motion_features_norm = F.normalize(motion_features, p=2, dim=1)
@@ -40,10 +40,14 @@ class CLIPLoss(torch.nn.Module):
         mask = mask + target
         contrastive_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
         
+        if generated_text_features == None:
+            return contrastive_loss
+        
+        generated_text_features = torch.squeeze(generated_text_features, dim=1)
         logits_per_motion = logit_scale * motion_features_norm @ generated_text_features.t()
         logits_per_text = logits_per_motion.t()
         gen_loss = (loss_motion(logits_per_motion * mask,target) + loss_txt(logits_per_text * mask,target)) / 2
-        
+
         return contrastive_loss + gen_loss
 
 def mean_pooling(model_output, attention_mask):
@@ -131,9 +135,11 @@ class CLIPose(nn.Module):
         # return self.text_projection(sentence_embeddings)
     
     def forward(self, batch):
+        generated_text_features = None
         if self.text_sources is None:
             try:
                 text_features = self.encode_text(batch['clip_text'])
+                
             except:
                 print(batch['clip_text'])
                 exit(0)
