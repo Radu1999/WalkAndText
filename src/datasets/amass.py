@@ -8,6 +8,8 @@ from PIL import Image
 import sys
 import clip
 import torch
+import pickle
+import csv
 
 sys.path.append('')
 
@@ -58,12 +60,15 @@ def get_trans_from_vibe(vibe, use_z=True):
 class AMASS(Dataset):
     dataname = "amass"
 
-    def __init__(self, datapath="data/amass/amass_db/babel_30fps_db.pt", split="vald", use_z=1, preprocess=None, **kwargs):
-        assert '_db.pt' in datapath
-        self.datapath = datapath.replace('_db.pt', '_{}.pt'.format(split))
-        assert os.path.exists(self.datapath)
-        print('datapath used by amass is [{}]'.format(self.datapath))
-        super().__init__(**kwargs)
+    def __init__(self, kinetics=False, datapath="data/amass/amass_db/babel_30fps_db.pt", split="test", use_z=1, preprocess=None, **kwargs):
+        if not kinetics:
+            assert '_db.pt' in datapath
+            if split == "test":
+                split = "vald"
+            self.datapath = datapath.replace('_db.pt', '_{}.pt'.format(split))
+            assert os.path.exists(self.datapath)
+            print('datapath used by amass is [{}]'.format(self.datapath))
+        super().__init__(split=split, kinetics=kinetics, **kwargs)
 
         self.dataname = "amass"
 
@@ -73,6 +78,7 @@ class AMASS(Dataset):
         self.use_gender = False
         self.use_body_features = False
         self.preprocess = preprocess
+        self.kinetics = kinetics
 
         self.use_z = (use_z != 0)
 
@@ -80,8 +86,12 @@ class AMASS(Dataset):
         dummy_class = [0]
         genders = config.GENDERS
         self.num_classes = len(dummy_class)
-
-        self.db = self.load_db()
+        
+        if kinetics:
+            self.db = self._build_kinetics()
+            print('KINETICS!!!!')
+        else:
+            self.db = self.load_db()
         self._joints3d = []
         self._poses = []
         self._num_frames_in_video = []
@@ -96,17 +106,29 @@ class AMASS(Dataset):
         self._actions_cat = []
         self.clip_label_text = "text_raw_labels"  # "text_proc_labels"
 
-        seq_len = 100
-        n_sequences = len(self.db['thetas'])
+        
+        if kinetics:
+            seq_len = 300
+            n_sequences = len(self.db['joints3d'])
+        else:
+            seq_len = 100
+            n_sequences = len(self.db['thetas'])
         # split sequences
+        print(n_sequences)
         for seq_idx in range(n_sequences):
-            n_sub_seq = self.db['thetas'][seq_idx].shape[0] // seq_len
+            if kinetics:
+                n_sub_seq = 1
+            else:
+                n_sub_seq = self.db['thetas'][seq_idx].shape[0] // seq_len
             if n_sub_seq == 0: continue
             n_frames_in_use = n_sub_seq * seq_len
             joints3d = np.split(self.db['joints3d'][seq_idx][:n_frames_in_use], n_sub_seq)
-            poses = np.split(self.db['thetas'][seq_idx][:n_frames_in_use], n_sub_seq)
+            if not kinetics:
+                poses = np.split(self.db['thetas'][seq_idx][:n_frames_in_use], n_sub_seq)
+                self._poses.extend(poses)
+                
             self._joints3d.extend(joints3d)
-            self._poses.extend(poses)
+            
             self._num_frames_in_video.extend([seq_len] * n_sub_seq)
 
             if 'action_cat' in self.db:
@@ -138,8 +160,10 @@ class AMASS(Dataset):
 
             actions = [0] * n_sub_seq
             self._actions.extend(actions)
-
-        assert len(self._num_frames_in_video) == len(self._poses) == len(self._joints3d) == len(self._actions)
+        if kinetics:
+            assert len(self._num_frames_in_video) == len(self._joints3d) == len(self._actions)
+        else:
+            assert len(self._num_frames_in_video) == len(self._poses) == len(self._joints3d) == len(self._actions)
         if self.use_betas:
             assert len(self._poses) == len(self._betas)
         if self.use_gender:
@@ -150,7 +174,7 @@ class AMASS(Dataset):
         self._actions = np.array(self._actions)
         self._num_frames_in_video = np.array(self._num_frames_in_video)
 
-        N = len(self._poses)
+        N = len(self._joints3d)
         # same set for training and testing
         self._train = np.arange(N)
         self._test = np.arange(N)
@@ -183,6 +207,35 @@ class AMASS(Dataset):
     def _load_joints3D(self, ind, frame_ix):
         joints3D = self._joints3d[ind][frame_ix]
         return joints3D
+    def _create_kinetics_db(self, dataset, split="train"):
+        dataset = torch.tensor(dataset).permute(0, 2, 3, 1, 4)
+        with open('data/kinetics_400_labels.csv', 'r') as file:
+            # Create a CSV reader object
+            csv_reader = csv.reader(file)
+            mapping = list(csv_reader)
+        with open(f'data/data/Kinetics/kinetics-skeleton/{split}_label.pkl', 'rb') as f:
+            labels = pickle.load(f)
+        db = {
+            'joints3d': [],
+            #'action_cat': [],
+            'clip_text': [],
+        }
+        for (idx, entry) in enumerate(dataset):
+            p1 = entry[:, :, :, 0]
+            p2 = entry[:, :, :, 1]
+            db['joints3d'].append(p1)
+            db['clip_text'].append(mapping[labels[1][idx] + 1][1])
+        return db
+    def _build_kinetics(self):
+        print(self.split)
+        if self.split == "train":
+            dataset = np.load('data/data/Kinetics/kinetics-skeleton/train_data.npy')
+        else:
+            print('VALIDATION!')
+            dataset = np.load('data/data/Kinetics/kinetics-skeleton/val_data.npy')
+        
+        return self._create_kinetics_db(dataset, "train" if self.split == "train" else "val")
+        
 
     def _load_rotvec(self, ind, frame_ix):
         pose = self._poses[ind][frame_ix, :].reshape(-1, ROT_CONVENTION_TO_ROT_NUMBER[self.rot_convention] + 1,
@@ -205,7 +258,7 @@ if __name__ == "__main__":
     device = 'cpu'
     clip_model, clip_preprocess = clip.load("ViT-B/32", device=device,
                                         jit=False)  # Must set jit=False for training
-    dataset = AMASS(preprocess=clip_preprocess)
-    print(torch.tensor(dataset._load_rotvec(0, 0)).shape)
+    dataset = AMASS(kinetics=True, preprocess=clip_preprocess, split="test")
+    print(len(dataset))
     print(dataset.__getitem__(0)['inp'].shape)
-    print(dataset.__getitem__(0)['inp'][0])
+    print(dataset.__getitem__(0))

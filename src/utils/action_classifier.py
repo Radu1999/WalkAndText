@@ -17,20 +17,32 @@ import joblib
 import numpy as np
 from transformers import RobertaTokenizer, RobertaModel
 import torch.nn.functional as F
+import csv
 
-def evaluate(model, dataset, iterator, parameters):
+l2gen = joblib.load('label_mapping.pt')
+
+def evaluate(model, dataset, iterator, parameters, kinetics=False):
     TOP_K_METRIC = 5
-    
-    if 'use_action_cat_as_text_labels' in parameters and parameters['use_action_cat_as_text_labels']:
-        ground_truth_gen = list(action_label_to_idx.keys())
-        ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
+    if kinetics:
+        with open('data/kinetics_400_labels.csv', 'r') as file:
+            # Create a CSV reader object
+            csv_reader = csv.reader(file)
+            mapping = list(csv_reader)
+
+        ground_truth_gen = [item[1] for item in mapping[1:]]
+        k_l2id = { item[1]: int(item[0]) for item in mapping[1:] }
     else:
-        # ground_truth_gen = list(action_label_to_idx.keys())
-        # ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
-        ground_truth = joblib.load('./data/babel_llm_1_smaller/grountruth.pt')
-        ground_truth.sort(key=lambda x: action_label_to_idx[x['orig']])
-        ground_truth_gen = [gt['generated'] for gt in ground_truth]
-    ground_truth_gen = ground_truth_gen[:120]
+        if 'use_action_cat_as_text_labels' in parameters and parameters['use_action_cat_as_text_labels']:
+            ground_truth_gen = list(action_label_to_idx.keys())
+            ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
+        else:
+            # ground_truth_gen = list(action_label_to_idx.keys())
+            # ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
+            ground_truth = joblib.load('./data/babel_llm_1_smaller/grountruth.pt')
+            ground_truth.sort(key=lambda x: action_label_to_idx[x['orig']])
+            ground_truth_gen = [gt['generated'] for gt in ground_truth]
+        ground_truth_gen = [l2gen[label] for label in ground_truth_gen[:60]]
+        #ground_truth_gen = ground_truth_gen[:60]
     
     
     correct_preds_top_5, correct_preds_top_1 = 0,0
@@ -46,8 +58,11 @@ def evaluate(model, dataset, iterator, parameters):
             for key in batch.keys():
                 if torch.is_tensor(batch[key]):
                     batch[key] = batch[key].to(model.device)
-                    
-            labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
+            
+            if kinetics:
+                labels = list(map(lambda x: [k_l2id[cat] for cat in x], batch['all_categories']))
+            else:
+                labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
             motion_features = model.encode_motion(batch)
             motion_features = motion_features / motion_features.norm(dim=-1, keepdim=True)
             similarity =  motion_features @ text_features.t()

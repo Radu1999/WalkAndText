@@ -7,7 +7,6 @@ from ..architectures.transformer import ProjectionHead
 from ..tools.losses import get_loss_function
 from ..rotation2xyz import Rotation2xyz
 import torch.nn.functional as F
-from angle_emb import AnglE
 from tqdm import tqdm
 import random
 import joblib
@@ -16,12 +15,12 @@ loss_motion = nn.CrossEntropyLoss()
 loss_txt = nn.CrossEntropyLoss()
 cosine_sim = nn.CosineSimilarity(dim=1, eps=1e-6)
 mse_loss = nn.MSELoss()
+l2gen = joblib.load('label_mapping.pt')
 
 class CLIPLoss(torch.nn.Module):
     def __init__(self):
         super(CLIPLoss, self).__init__()
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.logit_scale_gen = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
         self.threshold = 0.9
         
     def forward(self, text_features, motion_features, generated_text_features):
@@ -62,7 +61,7 @@ class CLIPose(nn.Module):
         super().__init__()
         self.encoder = encoder
         # self.text_projection = ProjectionHead(embedding_dim=1024, projection_dim=768, dropout=0.2)
-        self.motion_projection = ProjectionHead(embedding_dim=768, projection_dim=1024, dropout=0.2)
+        self.motion_projection = ProjectionHead(embedding_dim=768, projection_dim=1024)
         self._init_weights()
 
         self.outputxyz = outputxyz
@@ -100,6 +99,7 @@ class CLIPose(nn.Module):
         self.loss = CLIPLoss()
         
         # Initialize weights
+        # self._init_weights()
         
 
     def rot2xyz(self, x, mask, get_rotations_back=False, **kwargs):
@@ -138,8 +138,8 @@ class CLIPose(nn.Module):
         generated_text_features = None
         if self.text_sources is None:
             try:
+                # text_features = torch.stack([self.precomputed[label] for label in batch['clip_text']])
                 text_features = self.encode_text(batch['clip_text'])
-                
             except:
                 print(batch['clip_text'])
                 exit(0)
@@ -148,7 +148,7 @@ class CLIPose(nn.Module):
             categories = [random.choice(inner_list) for inner_list in batch['all_categories']]
             descriptions = [random.choice(self.text_sources[category]) for category in categories]
             generated_text_features = torch.stack(descriptions)
-            text_features = self.encode_text(batch['clip_text'])
+            text_features = self.encode_text([l2gen[label] for label in batch['clip_text']])
 
         motion_features = self.encode_motion(batch)
         loss = self.loss(text_features, motion_features, generated_text_features)  
@@ -158,6 +158,7 @@ class CLIPose(nn.Module):
         return loss, losses
     
     def precompute_tokens(self):
+        self.precomputed = {label: self.encode_text(text).squeeze() for (label, text) in l2gen.items()}
         if self.text_sources is not None:
             for key, value in self.text_sources.items():
                 self.text_sources[key] = [self.encode_text(elem) for elem in value[:10]]

@@ -13,8 +13,8 @@ from src.utils.action_label_to_idx import action_label_to_idx
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, num_frames=1, sampling="conseq", sampling_step=1, split="train",
-                 pose_rep="rot6d", translation=True, glob=True, max_len=-1, min_len=-1, num_seq_max=-1, **kwargs):
+    def __init__(self, num_frames=60, sampling="random_conseq", sampling_step=1, split="train",
+                 pose_rep="xyz", translation=True, glob=True, max_len=-1, kinetics=False, min_len=-1, num_seq_max=-1, **kwargs):
         self.num_frames = num_frames
         self.sampling = sampling
         self.sampling_step = sampling_step
@@ -23,6 +23,7 @@ class Dataset(torch.utils.data.Dataset):
         self.translation = translation
         self.glob = glob
         self.max_len = max_len
+        self.kinetics = kinetics
         self.min_len = min_len
         self.num_seq_max = num_seq_max
 
@@ -32,7 +33,7 @@ class Dataset(torch.utils.data.Dataset):
         self.leave_out_15_classes = kwargs.get('leave_out_15_classes', False)
         self.use_only_15_classes = kwargs.get('use_only_15_classes', False)
 
-        if self.split not in ["train", "val", "test"]:
+        if self.split not in ["train", "vald", "test"]:
             raise ValueError(f"{self.split} is not a valid split")
 
         super().__init__()
@@ -196,6 +197,7 @@ class Dataset(torch.utils.data.Dataset):
                                                padding))
 
             elif self.sampling in ["conseq", "random_conseq"]:
+                
                 step_max = (nframes - 1) // (num_frames - 1)
                 if self.sampling == "conseq":
                     if self.sampling_step == -1 or self.sampling_step * (num_frames - 1) >= nframes:
@@ -231,52 +233,58 @@ class Dataset(torch.utils.data.Dataset):
             output['clip_text'] = self.get_clip_text(data_index, frame_ix)
             if self.split == 'train':
                 return output
-            categories = self.get_clip_action_cat(data_index, frame_ix)
-            unique_cats = np.unique(categories)
-            all_valid_cats = []
-            for multi_cats in unique_cats:
-                for cat in multi_cats.split(","):
-                    if cat not in action_label_to_idx:
-                        continue
-                    cat_idx = action_label_to_idx[cat]
-                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
-                        continue
-                    if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
-                        continue
-                    all_valid_cats.extend([cat])
-            if len(all_valid_cats) == 0:
-                return None
-            choosen_cat = np.random.choice(all_valid_cats, size=1)[0]
+            if self.kinetics:
+                all_valid_cats = [output['clip_text']]
+            else:
+                categories = self.get_clip_action_cat(data_index, frame_ix)
+                unique_cats = np.unique(categories)
+                all_valid_cats = []
+                for multi_cats in unique_cats:
+                    for cat in multi_cats.split(","):
+                        if cat not in action_label_to_idx:
+                            continue
+                        cat_idx = action_label_to_idx[cat]
+                        if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                            continue
+                        if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                            continue
+                        all_valid_cats.extend([cat])
+                if len(all_valid_cats) == 0:
+                    return None
+                choosen_cat = np.random.choice(all_valid_cats, size=1)[0]
             output['all_categories'] = all_valid_cats        
 
         # if hasattr(self, 'db') and self.clip_label_text in self.db.keys():
         #     text_labels = self.get_clip_text(data_index, frame_ix)
         #     text_labels = " and ".join(condense_duplicates(text_labels))
         #     output['clip_text'] = text_labels
-
         if hasattr(self, 'db') and 'action_cat' in self.db.keys() and self.use_action_cat_as_text_labels:
-            categories = self.get_clip_action_cat(data_index, frame_ix)
-            unique_cats = np.unique(categories)
-            all_valid_cats = []
-            for multi_cats in unique_cats:
-                for cat in multi_cats.split(","):
-                    if cat not in action_label_to_idx:
-                        continue
-                    cat_idx = action_label_to_idx[cat]
-                    if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60)  or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
-                        continue
-                    if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
-                        continue
-                    all_valid_cats.extend([cat])
+            if self.kinetics:
+                output['clip_text'] = self.get_clip_text(data_index, frame_ix)
+                output['all_categories'] = [self.get_clip_text(data_index, frame_ix)]
+            else:
+                categories = self.get_clip_action_cat(data_index, frame_ix)
+                unique_cats = np.unique(categories)
+                all_valid_cats = []
+                for multi_cats in unique_cats:
+                    for cat in multi_cats.split(","):
+                        if cat not in action_label_to_idx:
+                            continue
+                        cat_idx = action_label_to_idx[cat]
+                        if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60)  or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                            continue
+                        if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                            continue
+                        all_valid_cats.extend([cat])
 
-            if len(all_valid_cats) == 0:  # No valid category available
-                return None
+                if len(all_valid_cats) == 0:  # No valid category available
+                    return None
 
-            choosen_cat = np.random.choice(all_valid_cats, size=1)[0]
-            # Replace clip text
-            output['clip_text'] = choosen_cat
-            output['y'] = action_label_to_idx[choosen_cat]
-            output['all_categories'] = all_valid_cats
+                choosen_cat = np.random.choice(all_valid_cats, size=1)[0]
+                # Replace clip text
+                output['clip_text'] = choosen_cat
+                output['y'] = action_label_to_idx[choosen_cat]
+                output['all_categories'] = all_valid_cats
         return output
 
     def get_label_sample(self, label, n=1, return_labels=False, return_index=False):

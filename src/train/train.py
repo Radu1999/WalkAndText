@@ -23,7 +23,9 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
     dataset = datasets["train"]
     #dataset.sampling = 'random_conseq'
     test_dataset = datasets["test"]
-    print(dataset.__getitem__(0)['clip_text'])
+    print(dataset.db.keys())
+    print(dataset.__getitem__(0))
+    # print(dataset.__getitem__(0)['clip_text'])
     test_iterator = DataLoader(test_dataset, batch_size=160,
                       shuffle=False, num_workers=16, collate_fn=collate)
 
@@ -69,7 +71,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 if parameters.get("model", "default") != "default":
                     top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)
                 else:
-                    top_1, top_5 = evaluate(model, test_dataset, test_iterator, parameters)
+                    top_1, top_5 = evaluate(model, test_dataset, test_iterator, parameters, kinetics=False)
                 model.train()
                 wandb.log({'top_1_acc': top_1})
                 wandb.log({'top_5_acc': top_5})
@@ -97,12 +99,12 @@ if __name__ == '__main__':
     parameters = parser()
     # logging tensorboard
     writer = SummaryWriter(log_dir=parameters["folder"])
-    # parameters['only_60_classes'] = True
-    parameters['clip_training'] = True
+    parameters['only_60_classes'] = True
+    # parameters['clip_training'] = True
     # parameters['sampling'] = 'random'
     #parameters['model'] = 'classifier'
     # text_descriptions = joblib.load('./data/multiple_captions.pt')
-    model, datasets = get_model_and_data(parameters, split="all", descriptions=None)
+    model, datasets = get_model_and_data(parameters, split="all", kinetics=False, descriptions=None)
     model.precompute_tokens()
     
     # checkpointpath = os.path.join('./exps/pretraining', 'checkpoint_0020.pth.tar')
