@@ -19,9 +19,10 @@ from transformers import RobertaTokenizer, RobertaModel
 import torch.nn.functional as F
 import csv
 
+# l2gen = joblib.load('label_mapping.pt')
 l2gen = joblib.load('label_mapping.pt')
 
-def evaluate(model, dataset, iterator, parameters, kinetics=False):
+def evaluate(model, dataset, iterator, parameters, kinetics=False, use_gen=False):
     TOP_K_METRIC = 5
     if kinetics:
         with open('data/kinetics_400_labels.csv', 'r') as file:
@@ -29,28 +30,26 @@ def evaluate(model, dataset, iterator, parameters, kinetics=False):
             csv_reader = csv.reader(file)
             mapping = list(csv_reader)
 
-        ground_truth_gen = [item[1] for item in mapping[1:]]
+        ground_truth = [item[1] for item in mapping[1:]]
         k_l2id = { item[1]: int(item[0]) for item in mapping[1:] }
-    else:
-        if 'use_action_cat_as_text_labels' in parameters and parameters['use_action_cat_as_text_labels']:
-            ground_truth_gen = list(action_label_to_idx.keys())
-            ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
-        else:
-            # ground_truth_gen = list(action_label_to_idx.keys())
-            # ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
-            ground_truth = joblib.load('./data/babel_llm_1_smaller/grountruth.pt')
-            ground_truth.sort(key=lambda x: action_label_to_idx[x['orig']])
-            ground_truth_gen = [gt['generated'] for gt in ground_truth]
-        ground_truth_gen = [l2gen[label] for label in ground_truth_gen[:60]]
-        #ground_truth_gen = ground_truth_gen[:60]
-    
-    
+    elif 'use_action_cat_as_text_labels' in parameters and parameters['use_action_cat_as_text_labels']:
+            ground_truth = list(action_label_to_idx.keys())
+            ground_truth.sort(key=lambda x: action_label_to_idx[x])
     correct_preds_top_5, correct_preds_top_1 = 0,0
     total_samples = 0
+    
+   
+    #ground_truth = joblib.load('inference_labels.pt')
     with torch.no_grad():
         
-        text_features = model.encode_text(ground_truth_gen)
-        text_features =  text_features / text_features.norm(dim=-1, keepdim=True)
+        if use_gen:
+            text_features = torch.stack(list(model.precomputed[label] for label in ground_truth[:60]))
+        else:
+            text_features = model.encode_text([label for label in ground_truth[:60]])
+        
+        # text_features = model.encode_text(ground_truth_gen)
+        
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
         # classes_text_emb_norm =  F.normalize(classes_text_emb, p=2, dim=-1)
         for i, batch in enumerate(iterator):
             if isinstance(batch['x'], list):
@@ -70,7 +69,7 @@ def evaluate(model, dataset, iterator, parameters, kinetics=False):
             total_samples += motion_features.shape[0]
             for i in range(similarity.shape[0]):
                 values, indices = similarity[i].topk(TOP_K_METRIC)
-
+                indices = [action_label_to_idx[ground_truth[idx]] for idx in indices]
                 # TOP-5 CHECK
                 if any([gt_cat_idx in indices for gt_cat_idx in labels[i]]):
                     correct_preds_top_5 += 1
@@ -92,6 +91,8 @@ def evaluate_transformer_classifier(model, dataset, iterator, parameters):
     ground_truth_gen = list(action_label_to_idx.keys())
     ground_truth_gen.sort(key=lambda x: action_label_to_idx[x])
     
+    ground_truth = joblib.load('inference_labels.pt')
+    ground_truth = list(action_label_to_idx.keys())[:60]
     correct_preds_top_5, correct_preds_top_1 = 0,0
     total_samples = 0
     with torch.no_grad():
@@ -105,16 +106,18 @@ def evaluate_transformer_classifier(model, dataset, iterator, parameters):
                     
             labels = list(map(lambda x: [action_label_to_idx[cat] for cat in x], batch['all_categories']))
             logits = model.predict(batch)
-            predicted_classes = torch.topk(logits, TOP_K_METRIC, dim=1)
-            total_samples += len(predicted_classes)
-            for predicted_class in predicted_classes:
+           
+            total_samples += len(logits)
+            for (i, logit) in enumerate(logits):
                 # TOP-5 CHECK
-                if any([gt_cat_idx in predicted_class for gt_cat_idx in labels[i]]):
+                values, indices = torch.topk(logit, TOP_K_METRIC)
+                indices = [action_label_to_idx[ground_truth[idx]] for idx in indices]
+                if any([gt_cat_idx in indices for gt_cat_idx in labels[i]]):
                     correct_preds_top_5 += 1
 
                 # TOP-1 CHECK
-                predicted_class = predicted_class[:1]
-                if any([gt_cat_idx in predicted_class for gt_cat_idx in labels[i]]):
+                indices = indices[:1]
+                if any([gt_cat_idx in indices for gt_cat_idx in labels[i]]):
                     correct_preds_top_1 += 1
 
             # print(f"Current Top-5 Acc. : {100 * correct_preds_top_5 / total_samples:.2f}%")
@@ -127,11 +130,11 @@ def evaluate_transformer_classifier(model, dataset, iterator, parameters):
 if __name__ == '__main__':
     parameters, folder, checkpointname, epoch = parser(checkpoint=True)
     #gpu_device = get_gpu_device()
-    parameters["device"] = f"cuda"
+    parameters["device"] = f"cpu"
     data_split = 'all'  # Hardcoded
-    # parameters['use_action_cat_as_text_labels'] = True
+    parameters['use_action_cat_as_text_labels'] = True
+    # parameters['last_60_classes'] = True
     parameters['only_60_classes'] = True
-
     TOP_K_METRIC = 5
 
     model, datasets = get_model_and_data(parameters, split="vald")
@@ -141,10 +144,11 @@ if __name__ == '__main__':
     state_dict = torch.load(checkpointpath, map_location=parameters["device"])
     load_model_wo_clip(model, state_dict)
     model.eval()
-    clip_model, clip_preprocess = clip.load("ViT-B/32", device=parameters['device'], jit=False)  # Must set jit=False for trainin)
+    #clip_model, clip_preprocess = clip.load("ViT-B/32", device=parameters['device'], jit=False)  # Must set jit=False for trainin)
     dataset = datasets["test"]
     iterator = DataLoader(dataset, batch_size=160,
                       shuffle=False, num_workers=16, collate_fn=collate)
+    print(parameters)
     top_1, top_5 = evaluate(model, dataset, iterator, parameters)
     print(top_1)
     print(top_5)

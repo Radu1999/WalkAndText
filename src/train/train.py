@@ -68,7 +68,7 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
             if ((epoch % parameters["snapshot"]) == 0) or (epoch == parameters["num_epochs"]):
                 
                 model.eval()
-                if parameters.get("model", "default") != "default":
+                if model.use_mlp:
                     top_1, top_5 = evaluate_transformer_classifier(model, test_dataset, test_iterator, parameters)
                 else:
                     top_1, top_5 = evaluate(model, test_dataset, test_iterator, parameters, kinetics=False)
@@ -79,9 +79,9 @@ def do_epochs(model, datasets, parameters, optimizer, writer, scheduler):
                 print(f'Top 5: {top_5}')
                 checkpoint_path = os.path.join(parameters["folder"],
                                                'checkpoint_{:04d}.pth.tar'.format(epoch))
-                if top_1 > 0.48:
-                    print('Saving checkpoint {}'.format(checkpoint_path))
-                    torch.save(model.state_dict(), checkpoint_path)
+                
+                print('Saving checkpoint {}'.format(checkpoint_path))
+                torch.save(model.state_dict(), checkpoint_path)
                 
             # if counter % interval == 0 and batch_size < 128:
             #     batch_size *= 2
@@ -106,8 +106,10 @@ if __name__ == '__main__':
     # text_descriptions = joblib.load('./data/multiple_captions.pt')
     model, datasets = get_model_and_data(parameters, split="all", kinetics=False, descriptions=None)
     model.precompute_tokens()
+    #model.freeze_weights()
+    #model.set_mlp()
     
-    # checkpointpath = os.path.join('./exps/pretraining', 'checkpoint_0020.pth.tar')
+    # checkpointpath = os.path.join('./exps/contrastive_masked_batch', 'checkpoint_0070.pth.tar')
     # state_dict = torch.load(checkpointpath, map_location=parameters["device"])
     # load_model_wo_clip(model, state_dict)
     

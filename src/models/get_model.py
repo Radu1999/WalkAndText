@@ -12,4 +12,4 @@ def get_model(parameters, decriptions=None, **kwargs):
     parameters["outputxyz"] = "rcxyz" in parameters["lambdas"]
     if parameters.get("model", "default") != "default":
         return PoseClassifier(encoder, **parameters).to(parameters["device"])
-    return CLIPose(encoder, text_sources=decriptions, **parameters).to(parameters["device"])
+    return CLIPose(encoder, decoder, text_sources=decriptions, **parameters).to(parameters["device"])

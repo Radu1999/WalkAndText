@@ -6,11 +6,12 @@ from ..utils.tensors import collate
 from ..utils.misc import to_torch
 import src.utils.rotation_conversions as geometry
 from src.datasets.tools import condense_duplicates
-
+import joblib
 POSE_REPS = ["xyz", "rotvec", "rotmat", "rotquat", "rot6d"]
 UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS = [48, 50, 28, 38, 52, 11, 29, 19, 51, 22, 14, 21, 26, 10, 24]
 from src.utils.action_label_to_idx import action_label_to_idx
 
+subset = joblib.load("inference_labels.pt")
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, num_frames=60, sampling="random_conseq", sampling_step=1, split="train",
@@ -244,10 +245,11 @@ class Dataset(torch.utils.data.Dataset):
                         if cat not in action_label_to_idx:
                             continue
                         cat_idx = action_label_to_idx[cat]
-                        if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                        if (cat_idx >= 120) or (cat not in subset) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                             continue
                         if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                             continue
+                            
                         all_valid_cats.extend([cat])
                 if len(all_valid_cats) == 0:
                     return None
@@ -271,7 +273,9 @@ class Dataset(torch.utils.data.Dataset):
                         if cat not in action_label_to_idx:
                             continue
                         cat_idx = action_label_to_idx[cat]
-                        if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60)  or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
+                        # if cat not in subset:
+                        #     continue
+                        if (cat_idx >= 120) or (self.only_60_classes and cat_idx >= 60) or (self.last_60_classes and cat_idx <60) or (self.leave_out_15_classes and cat_idx in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                             continue
                         if self.use_only_15_classes and (cat_idx not in UNSUPERVISED_BABEL_ACTION_CAT_LABELS_IDXS):
                             continue

@@ -112,20 +112,22 @@ class Encoder_TRANSFORMER(nn.Module):
 
         # embedding of the skeleton
         x = self.skelEmbedding(x)
-
+        
+        # positional encoding
+        x = self.sequence_pos_encoder(x)
         # Blank Y to 0's , no classes in our model, only learned token
-        y = y - y
-        xseq = torch.cat((self.muQuery[y][None], self.sigmaQuery[y][None], x), axis=0)
+#         y = y - y
+#         xseq = torch.cat((self.muQuery[y][None], self.sigmaQuery[y][None], x), axis=0)
 
-        # add positional encoding
-        xseq = self.sequence_pos_encoder(xseq)
+#         # add positional encoding
+#         xseq = self.sequence_pos_encoder(xseq)
 
-        # create a bigger mask, to allow attend to mu and sigma
-        muandsigmaMask = torch.ones((bs, 2), dtype=bool, device=x.device)
+#         # create a bigger mask, to allow attend to mu and sigma
+#         muandsigmaMask = torch.ones((bs, 2), dtype=bool, device=x.device)
 
-        maskseq = torch.cat((muandsigmaMask, mask), axis=1)
+#         maskseq = torch.cat((muandsigmaMask, mask), axis=1)
 
-        final = self.seqTransEncoder(xseq, src_key_padding_mask=~maskseq)
+        final = self.seqTransEncoder(x)
         mu = final[0]
         logvar = final[1]
 
@@ -154,25 +156,15 @@ class Decoder_TRANSFORMER(nn.Module):
         self.ff_size = ff_size
         self.num_layers = num_layers
         self.num_heads = num_heads
-        self.dropout = dropout
-
-        self.ablation = ablation
+        self.dropout = dropout 
 
         self.activation = activation
                 
         self.input_feats = self.njoints*self.nfeats
-
-        # only for ablation / not used in the final model
-        if self.ablation == "zandtime":
-            self.ztimelinear = nn.Linear(self.latent_dim + self.num_classes, self.latent_dim)
-
         self.actionBiases = nn.Parameter(torch.randn(1, self.latent_dim))
 
-        # only for ablation / not used in the final model
-        if self.ablation == "time_encoding":
-            self.sequence_pos_encoder = TimeEncoding(self.dropout)
-        else:
-            self.sequence_pos_encoder = PositionalEncoding(self.latent_dim, self.dropout)
+   
+        self.sequence_pos_encoder = PositionalEncoding(self.latent_dim, self.dropout)
         
         seqTransDecoderLayer = nn.TransformerDecoderLayer(d_model=self.latent_dim,
                                                           nhead=self.num_heads,
@@ -184,47 +176,21 @@ class Decoder_TRANSFORMER(nn.Module):
         
         self.finallayer = nn.Linear(self.latent_dim, self.input_feats)
         
-    def forward(self, batch, use_text_emb=False):
-        z, y, mask, lengths = batch["z"], batch["y"], batch["mask"], batch["lengths"]
-        if use_text_emb:
-            z = batch["clip_text_emb"]
+    def forward(self, batch):
+        z, mask = batch["motion_embeddings"], batch["mask"]
         latent_dim = z.shape[1]
-        bs, nframes = mask.shape
+        bs = mask.shape[0]
         njoints, nfeats = self.njoints, self.nfeats
 
-        # only for ablation / not used in the final model
-        if self.ablation == "zandtime":
-            yoh = F.one_hot(y, self.num_classes)
-            z = torch.cat((z, yoh), axis=1)
-            z = self.ztimelinear(z)
-            z = z[None]  # sequence of size 1
-        else:
-            # only for ablation / not used in the final model
-            if self.ablation == "concat_bias":
-                # sequence of size 2
-                z = torch.stack((z, self.actionBiases[y]), axis=0)
-            else:
-                z = z[None]  # sequence of size 1  #
+        z = z * batch["mask"]
+        z = z[None]
 
-        timequeries = torch.zeros(nframes, bs, latent_dim, device=z.device)
+        timequeries = torch.zeros(self.num_frames, bs, latent_dim, device=z.device)
+        timequeries = self.sequence_pos_encoder(timequeries)
         
-        # only for ablation / not used in the final model
-        if self.ablation == "time_encoding":
-            timequeries = self.sequence_pos_encoder(timequeries, mask, lengths)
-        else:
-            timequeries = self.sequence_pos_encoder(timequeries)
+        output = self.seqTransDecoder(tgt=timequeries, memory=z)
         
-        output = self.seqTransDecoder(tgt=timequeries, memory=z,
-                                      tgt_key_padding_mask=~mask)
-        
-        output = self.finallayer(output).reshape(nframes, bs, njoints, nfeats)
-        
-        # zero for padded area
-        output[~mask.T] = 0
+        output = self.finallayer(output).reshape(self.num_frames, bs, njoints, nfeats)
         output = output.permute(1, 2, 3, 0)
 
-        if use_text_emb:
-            batch["txt_output"] = output
-        else:
-            batch["output"] = output
-        return batch
+        return {"output": output}
