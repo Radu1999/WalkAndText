@@ -18,16 +18,3 @@ def to_torch(ndarray):
             type(ndarray)))
     return ndarray
 
-
-def cleanexit():
-    import sys
-    import os
-    try:
-        sys.exit(0)
-    except SystemExit:
-        os._exit(0)
-
-def load_model_wo_clip(model, state_dict):
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-    # assert len(unexpected_keys) == 0
-    # assert all([k.startswith('clip_model.') for k in missing_keys])

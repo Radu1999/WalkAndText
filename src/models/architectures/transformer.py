@@ -63,22 +63,15 @@ class ProjectionHead(nn.Module):
         return x
     
 class Encoder_TRANSFORMER(nn.Module):
-    def __init__(self, modeltype, njoints, nfeats, num_frames, num_classes, translation, pose_rep, glob, glob_rot,
+    def __init__(self, pose_rep, njoints=18, nfeats=3, num_frames=60,
                  latent_dim=512, ff_size=1024, num_layers=4, num_heads=4, dropout=0.1,
                  ablation=None, activation="gelu", **kargs):
         super().__init__()
-        
-        self.modeltype = modeltype
         self.njoints = njoints
         self.nfeats = nfeats
         self.num_frames = num_frames
-        self.num_classes = num_classes
         
         self.pose_rep = pose_rep
-        self.glob = glob
-        self.glob_rot = glob_rot
-        self.translation = translation
-        
         self.latent_dim = latent_dim
         
         self.ff_size = ff_size
@@ -112,85 +105,10 @@ class Encoder_TRANSFORMER(nn.Module):
 
         # embedding of the skeleton
         x = self.skelEmbedding(x)
-        
-        # positional encoding
         x = self.sequence_pos_encoder(x)
-        # Blank Y to 0's , no classes in our model, only learned token
-#         y = y - y
-#         xseq = torch.cat((self.muQuery[y][None], self.sigmaQuery[y][None], x), axis=0)
-
-#         # add positional encoding
-#         xseq = self.sequence_pos_encoder(xseq)
-
-#         # create a bigger mask, to allow attend to mu and sigma
-#         muandsigmaMask = torch.ones((bs, 2), dtype=bool, device=x.device)
-
-#         maskseq = torch.cat((muandsigmaMask, mask), axis=1)
 
         final = self.seqTransEncoder(x)
         mu = final[0]
         logvar = final[1]
 
         return {"mu": mu}
-
-
-class Decoder_TRANSFORMER(nn.Module):
-    def __init__(self, modeltype, njoints, nfeats, num_frames, num_classes, translation, pose_rep, glob, glob_rot,
-                 latent_dim=256, ff_size=1024, num_layers=4, num_heads=4, dropout=0.1, activation="gelu",
-                 ablation=None, **kargs):
-        super().__init__()
-
-        self.modeltype = modeltype
-        self.njoints = njoints
-        self.nfeats = nfeats
-        self.num_frames = num_frames
-        self.num_classes = num_classes
-        
-        self.pose_rep = pose_rep
-        self.glob = glob
-        self.glob_rot = glob_rot
-        self.translation = translation
-        
-        self.latent_dim = latent_dim
-        
-        self.ff_size = ff_size
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.dropout = dropout 
-
-        self.activation = activation
-                
-        self.input_feats = self.njoints*self.nfeats
-        self.actionBiases = nn.Parameter(torch.randn(1, self.latent_dim))
-
-   
-        self.sequence_pos_encoder = PositionalEncoding(self.latent_dim, self.dropout)
-        
-        seqTransDecoderLayer = nn.TransformerDecoderLayer(d_model=self.latent_dim,
-                                                          nhead=self.num_heads,
-                                                          dim_feedforward=self.ff_size,
-                                                          dropout=self.dropout,
-                                                          activation=activation)
-        self.seqTransDecoder = nn.TransformerDecoder(seqTransDecoderLayer,
-                                                     num_layers=self.num_layers)
-        
-        self.finallayer = nn.Linear(self.latent_dim, self.input_feats)
-        
-    def forward(self, batch):
-        z, mask = batch["motion_embeddings"], batch["mask"]
-        latent_dim = z.shape[1]
-        bs = mask.shape[0]
-        njoints, nfeats = self.njoints, self.nfeats
-
-        z = z * batch["mask"]
-        z = z[None]
-
-        timequeries = torch.zeros(self.num_frames, bs, latent_dim, device=z.device)
-        timequeries = self.sequence_pos_encoder(timequeries)
-        
-        output = self.seqTransDecoder(tgt=timequeries, memory=z)
-        
-        output = self.finallayer(output).reshape(self.num_frames, bs, njoints, nfeats)
-        output = output.permute(1, 2, 3, 0)
-
-        return {"output": output}

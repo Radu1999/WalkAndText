@@ -20,43 +20,31 @@ def collate_tensors(batch):
     return canvas
 
 
-def collate(batch):
+def collate_gait(batch):
     notnone_batches = [b for b in batch if b is not None]
     if len(notnone_batches) == 0:
         out_batch = {"x": [], "y": [],
                      "mask": [], "lengths": [],
-                     "clip_image": [], "clip_text": [],
-                     "clip_path": [], "clip_images_emb": []
                      }
         return out_batch
+    
     databatch = [b['inp'] for b in notnone_batches]
-    labelbatch = [b['target'] for b in notnone_batches]
+    labelbatch = [b['labels'] for b in notnone_batches]
     lenbatch = [len(b['inp'][0][0]) for b in notnone_batches]
 
-
+    
     databatchTensor = collate_tensors(databatch)
-    labelbatchTensor = torch.as_tensor(labelbatch)
+    labelbatchTensor = collate_tensors(torch.tensor(labelbatch))
     lenbatchTensor = torch.as_tensor(lenbatch)
     maskbatchTensor = lengths_to_mask(lenbatchTensor)
-
-
-    out_batch = {"x": databatchTensor, "y": labelbatchTensor,
-             "mask": maskbatchTensor, "lengths": lenbatchTensor}
-             # "y_action_names": actionlabelbatchTensor}
-    if 'clip_image' in notnone_batches[0]:
-        clip_image_batch = [torch.as_tensor(b['clip_image']) for b in notnone_batches]
-        out_batch.update({'clip_images': collate_tensors(clip_image_batch)})
-
-    if 'clip_text' in notnone_batches[0]:
-        textbatch = [b['clip_text'] for b in notnone_batches]
-        out_batch.update({'clip_text': textbatch})
-
-    if 'clip_path' in notnone_batches[0]:
-        textbatch = [b['clip_path'] for b in notnone_batches]
-        out_batch.update({'clip_path': textbatch})
-
-    if 'all_categories' in notnone_batches[0]:
-        textbatch = [b['all_categories'] for b in notnone_batches]
-        out_batch.update({'all_categories': textbatch})
-
+    
+    out_batch = {"x": databatchTensor,
+             "mask": maskbatchTensor, "lengths": lenbatchTensor, "labels": labelbatchTensor}
+    
+    textbatch = [b['target'] for b in notnone_batches]
+    out_batch.update({'y': textbatch})
+    
+    textbatch = [b['id'] for b in notnone_batches]
+    out_batch.update({'id': textbatch})
+    
     return out_batch
