@@ -23,20 +23,6 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.shape[0], :]
         return self.dropout(x)
 
-
-# only for ablation / not used in the final model
-class TimeEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(TimeEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-    def forward(self, x, mask, lengths):
-        time = mask * 1/(lengths[..., None]-1)
-        time = time[:, None] * torch.arange(time.shape[1], device=x.device)[None, :]
-        time = time[:, 0].T
-        # add the time encoding
-        x = x + time[..., None]
-        return self.dropout(x)
     
 class ProjectionHead(nn.Module):
     def __init__(
@@ -47,7 +33,6 @@ class ProjectionHead(nn.Module):
     ):
         super().__init__()
         self.projection = nn.Linear(embedding_dim, projection_dim)
-        # self.projection2 = nn.Linear(projection_dim // 2, projection_dim)
         self.gelu = nn.GELU()
         self.fc = nn.Linear(projection_dim, projection_dim)
         self.dropout = nn.Dropout(dropout)

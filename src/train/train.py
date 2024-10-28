@@ -67,19 +67,17 @@ if __name__ == '__main__':
         'snapshot': 20,
         'device': 0,
         'folder': './exps',
-        'lr': 10e-5,
+        'lr': 1e-5,
         'num_layers': 12,
         'num_frames': 60,
-        'batch_size': 256,
+        'batch_size': 128,
         'pose_rep': 'rot6d',
         'jointstype': 'vertices',
         'glob_rot': [3.141592653589793, 0, 0],
         'glob': True,
         'latent_dim': 768,
         'translation': True,
-        'vertstrans': False,
-        
-        
+        'vertstrans': False, 
     }
     model, datasets = get_model_and_data_gait(parameters)
     optimizer = torch.optim.AdamW(model.parameters(), lr=parameters["lr"], weight_decay=0.1)
@@ -87,6 +85,6 @@ if __name__ == '__main__':
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
     print("Training model..")
     
-    wandb.login(key='93443c480bfbaa0b19be76d24f2efeb6be3319fd')
+    wandb.login(key='')
     wandb.init(project='text2motion', name='CLIP_SIMPLE')
     do_epochs(model, datasets, parameters, optimizer)
